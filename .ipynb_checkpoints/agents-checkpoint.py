@@ -51,10 +51,11 @@ def playNIterations(agent1, agent2, N, error=None):
     return a1score, a2score
 
 class Agent:
-    def __init__(self, short=True):
+    def __init__(self, short=True, score=0):
         self.past = []
         if short:
             self.short()
+        self.score = score
     
     def reset(self):
         self.score = 0
@@ -124,4 +125,4 @@ class STFT(Agent):
         self.name = 'stft'
 
 def agentTypes():
-    return {'du':Du, 'cu':Cu, 'rand':Rand, 'cp':Cp, 'tft':TFT, 'stft':STFT}
+    return {'du':(Du,0), 'cu':(Cu,1), 'rand':(Rand,2), 'cp':(Cp,3), 'tft':(TFT,4), 'stft':(STFT,5)}

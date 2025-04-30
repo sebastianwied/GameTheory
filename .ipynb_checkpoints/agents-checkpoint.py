@@ -1,11 +1,5 @@
 import numpy as np
-# Constants:
-COOP = 1
-DEF = 0
-# Interaction matrix entries
-payoff = (5,3,1,0)
-
-
+from params import *
 
 
 class Agent:
@@ -90,20 +84,3 @@ agentTypes = {'du':(Du,0), 'cu':(Cu,1), 'rand':(Rand,2), 'cp':(Cp,3), 'tft':(TFT
 
 agentIDs = {0:'du', 1:'cu', 2:'rand', 3:'cp', 4:'tft', 5:'stft'}
 
-def setAgents(selectFrom):
-    newagentTypes = dict()
-    newagentIDs = dict()
-    for newID, agtype in enumerate(selectFrom):
-        agName = agtype().name
-        typeentry = MasterAgentTypes[agName]
-        typeentry = (typeentry[0], newID)
-        newagentTypes[agName] = typeentry
-        newagentIDs[newID] = agName
-    return newagentIDs, newagentTypes
-
-def agentArraySnapshot(agents):
-    agentSnap = np.zeros(agents.shape)
-    for idr, row in enumerate(agents):
-        for idc, ag in enumerate(row):
-            agentSnap[idr,idc] = agentTypes[ag.name][1]
-    return agentSnap

@@ -12,37 +12,38 @@ def distributePrize(me, them):
         return payoff[0]
     return payoff[2]
 
-def playOneIteration(agent1, agent2, roundNumber, error=None):
+def playOneIteration(agent1, agent2, roundNumber, error=0):
     '''
     Inputs: Two agent objects, iteration round number
     Output: Tuple of scores given to each player
     '''
-    move1 = agent1.rule(agent2.past, roundNumber)
-    move2 = agent2.rule(agent1.past, roundNumber)
-    if error != None:
-        if np.random.rand() < error:
-            move1 = 1 - move1
-        if np.random.rand() < error:
-            move2 = 1 - move2
-    agent1.past.append(move1)
-    agent2.past.append(move2)
+    move1 = agent1.playMove(agent2.prev, roundNumber, error)
+    move2 = agent2.playMove(agent1.prev, roundNumber, error)
+    agent1.prev = move1
+    agent2.prev = move2
     a1prize = distributePrize(move1, move2)
     a2prize = distributePrize(move2, move1)
     return a1prize, a2prize
 
-def playNIterations(agent1, agent2, N, error=None):
+def playNIterations(agent1, agent2, N, error=0):
     '''
     Inputs: Two agent objects, number of iterations
     Outputs: Tuple of scores accumulated for each player
     '''
     a1score = 0
     a2score = 0
-    for n in range(N):
+    move1 = agent1.turnOne
+    move2 = agent2.turnOne
+    agent1.prev = move1
+    agent2.prev = move2
+    a1score = distributePrize(move1, move2)
+    a2score = distributePrize(move2, move1)
+    for n in range(1,N+1):
         a1p, a2p = playOneIteration(agent1, agent2, n, error)
         a1score += a1p
         a2score += a2p
-    agent1.past = []
-    agent2.past = []
+    agent1.resetPast()
+    agent2.resetPast()
     return a1score, a2score
 
 '''

@@ -1,7 +1,7 @@
-import agents
-selectFrom = [agents.TFT, agents.Cu, agents.Du, agents.Cp]
-agents.agentIDs, agents.agentTypes = agents.setAgents(selectFrom)
-agents.payoff = (6,3,1,0)
+import memoryone as m1
+selectFrom = [m1.TFT, m1.CU, m1.DU, m1.CP, m1.GRIM]
+import params
+params.agentIDs, params.agentTypes = m1.setAgents(selectFrom)
 
 from roundtable import *
 from agentgen import *

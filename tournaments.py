@@ -1,8 +1,9 @@
 import numpy as np
 import numpy.random as random
-from agents import *
+from memoryone import *
 from roundtable import *
 from evolution import *
+from params import *
 from time import perf_counter
 
 def gridTournament(iterations, rounds, agents, neighborhoodSize, evolutionFunction):
@@ -34,4 +35,10 @@ def gridTournament(iterations, rounds, agents, neighborhoodSize, evolutionFuncti
         print(end-start)
     e = perf_counter()
     return scores, scoreSnaps, agentSnaps
-    
+
+def agentArraySnapshot(agents):
+    agentSnap = np.zeros(agents.shape)
+    for idr, row in enumerate(agents):
+        for idc, ag in enumerate(row):
+            agentSnap[idr,idc] = agentTypes[ag.name][1]
+    return agentSnap

@@ -1,6 +1,6 @@
 import numpy as np
 import numpy.random as random
-from agents import *
+from memoryone import *
 
 def gridBasicEvolution(agents, adjacencies, scoresGained):
     Y, X = agents.shape
@@ -15,5 +15,5 @@ def gridBasicEvolution(agents, adjacencies, scoresGained):
                 agentscopy[idr, idc] = type(agents[index // Y, index % X])(score=scoresGained[idr, idc])
     return agentscopy
 
-def noEvolution(agents, adjacencies, scoresGained):
+def gridNoEvolution(agents, adjacencies, scoresGained):
     return agents

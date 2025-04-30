@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.animation as anim
 import matplotlib.colors as colors
-from agents import *
+from params import *
 
 def displayFrames(agentFrames, scoreFrames, labelfrequency, save=False):
     fig1, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2,3, figsize=(16,8))

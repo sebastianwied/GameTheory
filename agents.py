@@ -1,54 +1,6 @@
 import numpy as np
-# Constants:
-COOP = 1
-DEF = 0
-# Interaction matrix entries
-T = 5
-R = 3 
-P = 1 
-S = 0
+from params import *
 
-def distributePrize(me, them):
-    if me == them == COOP:
-        return R
-    if (me == COOP) and (them == DEF):
-        return S
-    if (me == DEF) and (them == COOP):
-        return T
-    return P
-
-def playOneIteration(agent1, agent2, roundNumber, error=None):
-    '''
-    Inputs: Two agent objects, iteration round number
-    Output: Tuple of scores given to each player
-    '''
-    move1 = agent1.rule(agent2.past, roundNumber)
-    move2 = agent2.rule(agent1.past, roundNumber)
-    if error != None:
-        if np.random.rand() < error:
-            move1 = 1 - move1
-        if np.random.rand() < error:
-            move2 = 1 - move2
-    agent1.past.append(move1)
-    agent2.past.append(move2)
-    a1prize = distributePrize(move1, move2)
-    a2prize = distributePrize(move2, move1)
-    return a1prize, a2prize
-
-def playNIterations(agent1, agent2, N, error=None):
-    '''
-    Inputs: Two agent objects, number of iterations
-    Outputs: Tuple of scores accumulated for each player
-    '''
-    a1score = 0
-    a2score = 0
-    for n in range(N):
-        a1p, a2p = playOneIteration(agent1, agent2, n, error)
-        a1score += a1p
-        a2score += a2p
-    agent1.past = []
-    agent2.past = []
-    return a1score, a2score
 
 class Agent:
     def __init__(self, short=True, score=0):
@@ -124,5 +76,28 @@ class STFT(Agent):
     def short(self):
         self.name = 'stft'
 
-def agentTypes():
-    return {'du':(Du,0), 'cu':(Cu,1), 'rand':(Rand,2), 'cp':(Cp,3), 'tft':(TFT,4), 'stft':(STFT,5)}
+MasterAgentTypes = {'du':(Du,0), 'cu':(Cu,1), 'rand':(Rand,2), 'cp':(Cp,3), 'tft':(TFT,4), 'stft':(STFT,5)}
+
+MasterAgentIDs = {0:'du', 1:'cu', 2:'rand', 3:'cp', 4:'tft', 5:'stft'}
+
+agentTypes = {'du':(Du,0), 'cu':(Cu,1), 'rand':(Rand,2), 'cp':(Cp,3), 'tft':(TFT,4), 'stft':(STFT,5)}
+
+agentIDs = {0:'du', 1:'cu', 2:'rand', 3:'cp', 4:'tft', 5:'stft'}
+
+def setAgents(selectFrom):
+    newagentTypes = dict()
+    newagentIDs = dict()
+    for newID, agtype in enumerate(selectFrom):
+        agName = agtype().name
+        typeentry = MasterAgentTypes[agName]
+        typeentry = (typeentry[0], newID)
+        newagentTypes[agName] = typeentry
+        newagentIDs[newID] = agName
+    return newagentIDs, newagentTypes
+
+def agentArraySnapshot(agents):
+    agentSnap = np.zeros(agents.shape)
+    for idr, row in enumerate(agents):
+        for idc, ag in enumerate(row):
+            agentSnap[idr,idc] = agentTypes[ag.name][1]
+    return agentSnap

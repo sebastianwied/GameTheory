@@ -29,6 +29,13 @@ class MemoryOne:
 
     def __repr__(self): return self.name
 
+class BLANK(MemoryOne):
+    def startup(self):
+        self.name = 'BLANK'
+        self.rule = [0,0,0,0]
+        self.turnOne = COOP if random.rand() < self.rule[0] else DEF
+        self.prev = self.turnOne
+
 class CU(MemoryOne): # Cooperate Unconditionally
     def startup(self):
         self.name = 'CU'
@@ -94,12 +101,9 @@ class GRIM(MemoryOne): # Grim Trigger
         self.rule = [0,0,0,1]
         self.prev = COOP
 
+MasterAgentTypes = {'BLANK':(BLANK,0), 'CU':(CU,1), 'RAND':(RAND,2), 'DU':(DU,3), 'TFT':(TFT,4), 'STFT':(STFT,5), 'GRIM':{GRIM,6}, 'CP':(CP,7)}
 
-
-
-MasterAgentTypes = {'DU':(DU,0), 'CU':(CU,1), 'RAND':(RAND,2), 'CP':(CP,3), 'TFT':(TFT,4), 'STFT':(STFT,5), 'GRIM':(GRIM,6)}
-
-MasterAgentIDs = {0:'DU', 1:'CU', 2:'RAND', 3:'CP', 4:'TFT', 5:'STFT', 6:'GRIM'}
+MasterAgentIDs = {0:'BLANK', 1:'CU', 2:'RAND', 3:'DU', 4:'TFT', 5:'STFT', 6:'GRIM', 7:'CP'}
 
 def setAgents(selectFrom):
     newagentTypes = dict()

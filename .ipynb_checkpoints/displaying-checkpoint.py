@@ -64,3 +64,67 @@ def displayFrames(agentFrames, scoreFrames, labelfrequency, save=False):
     if save:
         ani.save('evolution.mp4', writer='ffmpeg', fps=30)
     plt.show()
+
+def displayMemoryOne(agents, agentFrames, agentRuleFrames, scoreFrames):
+    framerate = 300
+    fig1, ((ax1, ax2, ax3, ax7), (ax4, ax5, ax6, ax8)) = plt.subplots(2,4, figsize=(16,8))
+    ax1.axis('off')
+    ax2.axis('off')
+    ax3.axis('off')
+    ax4.axis('off')
+    ax5.axis('off')
+    ax6.axis('off')
+    ax7.axis('off')
+    ax8.axis('off')
+    strategies = np.empty((agents.shape[0],agents.shape[0],4))
+    for idr, row in enumerate(agents):
+        for idc, agent in enumerate(row):
+            strategies[idr][idc][:] = agent.rule
+    DDframes = agentRuleFrames[:,:,:,0]
+    DCframes = agentRuleFrames[:,:,:,1]
+    CDframes = agentRuleFrames[:,:,:,2]
+    CCframes = agentRuleFrames[:,:,:,3]
+    imDD = ax2.imshow(DDframes[0], cmap='YlOrRd', vmin=0, vmax=1)
+    ax2.set_title('DD(Me, Them)')
+    anidd = anim.FuncAnimation(fig=fig1, func=lambda frame: imDD.set_data(DDframes[frame]), frames=len(DDframes), interval=framerate)
+    imDC = ax3.imshow(DCframes[0], cmap='YlOrRd', vmin=0, vmax=1)
+    ax3.set_title('DC(Me, Them)')
+    anidc = anim.FuncAnimation(fig=fig1, func=lambda frame: imDC.set_data(DCframes[frame]), frames=len(DCframes), interval=framerate)
+    imCD = ax5.imshow(CDframes[0], cmap='YlOrRd', vmin=0, vmax=1)
+    ax5.set_title('CD(Me, Them)')
+    anicd = anim.FuncAnimation(fig=fig1, func=lambda frame: imCD.set_data(CDframes[frame]), frames=len(CDframes), interval=framerate)
+    imCC = ax6.imshow(CCframes[0], cmap='YlOrRd', vmin=0, vmax=1)
+    ax6.set_title('CC(Me, Them)')
+    anicc = anim.FuncAnimation(fig=fig1, func=lambda frame: imCC.set_data(CCframes[frame]), frames=len(CCframes), interval=framerate)
+    plt.colorbar(imDD, ax=ax2)
+    plt.colorbar(imDC, ax=ax3)
+    plt.colorbar(imCD, ax=ax5)
+    plt.colorbar(imCC, ax=ax6)
+
+    colorlist = ['tab:blue', 'tab:orange', 'tab:purple', 'tab:green', 'tab:red', 'yellow']
+    colorlist = colorlist[:len(agentIDs.items())]
+    indexcolorlist = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'yellow', 'white']
+    indexcolorlist = indexcolorlist[:len(agentIDs.items())]
+    indexcolormap = colors.LinearSegmentedColormap.from_list('custom', indexcolorlist)
+    colormap = colors.LinearSegmentedColormap.from_list('custom', colorlist)
+    frame0 = agentFrames[0]
+    bufferarr = np.ones((frame0.shape[0],1), dtype=int)*len(indexcolorlist)
+    indexarr = np.linspace(0, len(indexcolorlist), frame0.shape[0], dtype=int).reshape(-1, 1)
+    frame0 = np.hstack((frame0, bufferarr, indexarr))
+    orig = ax1.imshow(frame0, cmap=indexcolormap, vmin=0, vmax=len(indexcolorlist))
+    ax1.set_title("Original")
+    prev = -1
+    for i, val in enumerate(indexarr):
+        if (val[0] > prev) and val[0] < len(colorlist) : 
+            ax1.text(frame0.shape[1], i + (frame0.shape[0]//(2*len(colorlist))), f'{agentIDs[val[0]]}', ha="center", va="center", color="k", rotation=-20)
+        prev = val[0]
+    #agim = ax4.imshow(agentFrames[-1], cmap=indexcolormap, vmin=0, vmax=len(indexcolorlist))
+    #aniag = anim.FuncAnimation(fig=fig1, func=lambda frame: agim.set_data(agentFrames[frame]), frames=len(agentFrames), interval=framerate)
+
+    #scoreim = ax7.imshow(scoreFrames[0], cmap='YlOrRd')
+    #ax7.set_title("Score Evolution")
+    #aniscore = anim.FuncAnimation(fig=fig1, func=lambda frame: scoreim.set_data(scoreFrames[frame]), frames=len(scoreFrames), interval=150)
+    finalscore = ax8.imshow(scoreFrames[-1], cmap='YlOrRd')
+    ax8.set_title("Final")
+    
+    plt.show()

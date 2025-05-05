@@ -1,7 +1,7 @@
 import memoryone as m1
-selectFrom = [m1.TFT, m1.CU, m1.DU, m1.CP, m1.GRIM]
+#selectFrom = [m1.TFT, m1.CU, m1.DU]#, m1.GRIM, m1.STFT]
 import params
-params.agentIDs, params.agentTypes = m1.setAgents(selectFrom)
+#params.agentIDs, params.agentTypes = m1.setAgents(selectFrom)
 
 from roundtable import *
 from agentgen import *
@@ -10,10 +10,12 @@ from displaying import *
 from evolution import *
 from time import perf_counter
 
-agentgrid = perlinGrid((64,64),(4,4))
+agentgrid = perlinParamGrid((64,64), (4,4))
 adjacencies = gridAdjacencyTable(agentgrid, 1)
 start = perf_counter()
-scores, scoresnaps, agentsnaps = gridTournament(100, 40, agentgrid, 1, gridBasicEvolution)
+scores, scoresnaps, agentsnaps, agentrulesnaps, agents = gridTournament(50, 50, agentgrid, 1, gridParameterEvolution)
 end = perf_counter()
-displayFrames(agentsnaps, scoresnaps, 8, save=False)
+print(agentrulesnaps.shape)
+displayMemoryOne(agents, agentsnaps, agentrulesnaps, scoresnaps)
+#displayFrames(agentsnaps, scoresnaps, 8, save=False)
 print(end-start)

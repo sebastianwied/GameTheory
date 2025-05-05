@@ -1,7 +1,6 @@
 import numpy as np
 from params import *
 
-
 class Agent:
     def __init__(self, short=True, score=0):
         self.past = []

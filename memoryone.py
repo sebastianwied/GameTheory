@@ -58,7 +58,7 @@ class RAND(MemoryOne): # Random
         self.prev = self.turnOne
 
     def resetPast(self):
-        self.prev = turnOne
+        self.prev = self.turnOne
 
 class CP(MemoryOne): # Cooperate Probablistically
     def startup(self):

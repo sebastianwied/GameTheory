@@ -128,3 +128,61 @@ def displayMemoryOne(agents, agentFrames, agentRuleFrames, scoreFrames):
     ax8.set_title("Final")
     
     plt.show()
+
+def displayMemOneHist(agents, agentRuleFrames):
+    framerate = 300
+    fig1, ((ax1, ax2, ax3, ax4), (ax5, ax6, ax7, ax8)) = plt.subplots(2,4, figsize=(16,8))
+    ax2.axis('off')
+    ax3.axis('off')
+    ax6.axis('off')
+    ax7.axis('off')
+    DDframes = agentRuleFrames[:,:,:,0]
+    DCframes = agentRuleFrames[:,:,:,1]
+    CDframes = agentRuleFrames[:,:,:,2]
+    CCframes = agentRuleFrames[:,:,:,3]
+
+    ddHist = ax1.hist(DDframes[0].ravel())
+    def ddUpdate(frame):
+        ax1.cla()
+        ax1.hist(DDframes[frame].ravel())
+    ddHistAni = anim.FuncAnimation(fig=fig1, func=ddUpdate, frames=len(DDframes), interval=framerate)
+
+    imDD = ax2.imshow(DDframes[0], cmap='YlOrRd', vmin=0, vmax=1)
+    ax2.set_title('DD(Me, Them)')
+    anidd = anim.FuncAnimation(fig=fig1, func=lambda frame: imDD.set_data(DDframes[frame]), frames=len(DDframes), interval=framerate)
+    
+    imDC = ax3.imshow(DCframes[0], cmap='YlOrRd', vmin=0, vmax=1)
+    ax3.set_title('DC(Me, Them)')
+    anidc = anim.FuncAnimation(fig=fig1, func=lambda frame: imDC.set_data(DCframes[frame]), frames=len(DCframes), interval=framerate)
+    
+    dcHist = ax4.hist(DCframes[0].ravel())
+    def dcUpdate(frame):
+        ax4.cla()
+        ax4.hist(DCframes[frame].ravel())
+    dcHistAni = anim.FuncAnimation(fig=fig1, func=dcUpdate, frames=len(DCframes), interval=framerate)
+    
+    imCD = ax6.imshow(CDframes[0], cmap='YlOrRd', vmin=0, vmax=1)
+    ax6.set_title('CD(Me, Them)')
+    anicd = anim.FuncAnimation(fig=fig1, func=lambda frame: imCD.set_data(CDframes[frame]), frames=len(CDframes), interval=framerate)
+    
+    cdHist = ax5.hist(CDframes[0].ravel())
+    def cdUpdate(frame):
+        ax5.cla()
+        ax5.hist(CDframes[frame].ravel())
+    cdHistAni = anim.FuncAnimation(fig=fig1, func=cdUpdate, frames=len(CDframes), interval=framerate)
+    
+    imCC = ax7.imshow(CCframes[0], cmap='YlOrRd', vmin=0, vmax=1)
+    ax7.set_title('CC(Me, Them)')
+    anicc = anim.FuncAnimation(fig=fig1, func=lambda frame: imCC.set_data(CCframes[frame]), frames=len(CCframes), interval=framerate)
+    
+    ccHist = ax8.hist(CCframes[0].ravel())
+    def ccUpdate(frame):
+        ax8.cla()
+        ax8.hist(CCframes[frame].ravel())
+    ccHistAni = anim.FuncAnimation(fig=fig1, func=ccUpdate, frames=len(CCframes), interval=framerate)
+    
+    plt.colorbar(imDD, ax=ax2)
+    plt.colorbar(imDC, ax=ax3)
+    plt.colorbar(imCD, ax=ax6)
+    plt.colorbar(imCC, ax=ax7)
+    plt.show()

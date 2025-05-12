@@ -37,5 +37,8 @@ start = perf_counter()
 scores, scoresnaps, agentsnaps, agentrulesnaps, agents = gridTournament(50, 50, agentgrid, 1, gridParameterEvolution)
 end = perf_counter()
 print(agentrulesnaps.shape)
-displayMemoryOne(agents, agentsnaps, agentrulesnaps, scoresnaps)
+if genType == 1:
+    displayMemOneHist(agents, agentrulesnaps)
+if genType == 2:
+    displayMemoryOne(agents, agentsnaps, agentrulesnaps, scoresnaps)
 print(end-start)

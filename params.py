@@ -1,6 +1,6 @@
 from memoryone import *
 
-payoff = (5,3,1,0)
+payoff = (7,3,1,0)
 
 agentTypes = {'BLANK':(BLANK,0), 'CU':(CU,1), 'RAND':(RAND,2), 'DU':(DU,3), 'TFT':(TFT,4), 'STFT':(STFT,5), 'GRIM':(GRIM,6), 'CP':(CP,7)}
 

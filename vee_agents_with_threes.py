@@ -128,5 +128,12 @@ class Grim(Agent):
         self.name = 'grim trigger'
         self.trigger = 1
 
+class Threes(Agent):
+    def rule(self, them, rn):
+        if rn%3 == 0: return COOP
+        return DEF
+    def short(self):
+        self.name = 'threes'
+
 def agentTypes():
     return {'du':Du, 'cu':Cu, 'rand':Rand, 'cp':Cp, 'tft':TFT, 'stft':STFT}

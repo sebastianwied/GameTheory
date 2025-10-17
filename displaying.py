@@ -5,6 +5,60 @@ import matplotlib.animation as anim
 import matplotlib.colors as colors
 from params import *
 
+def flattenDataToHist(data, max=None):
+    histogramX = list(range(len(data)))
+    histogramZ = []
+    maxScore = max
+    if maxScore == None: maxScore = np.nanmax(data[-1])
+    bins = np.linspace(0,maxScore,200)
+    for snap in data:
+        hist, _ = np.histogram(snap, bins)
+        histogramZ.append(hist)
+    histogramY = []
+    for n in range(len(bins)-1):
+        histogramY.append((bins[n]+bins[n+1])/2)
+    x = np.array(histogramX)
+    y = np.array(histogramY)
+    z = np.array(histogramZ)
+    y, x = np.meshgrid(y, x)
+    return x, y, z
+
+def contourPlots(scoreSnaps, totalScore, ruleSnaps, iters):
+    # Generate score 3d data
+    # x axis is round
+    # y is histogram buckets
+    # z is height of histogram
+    ### Score evolution:
+    x, y, z = flattenDataToHist(scoreSnaps, iters*5)
+    z_masked = np.ma.masked_where(z == 0, z)
+    fig = plt.figure(figsize=(12,8))
+    nrows, ncols = 2,3
+    score = fig.add_subplot(nrows, ncols, 1, projection="3d")
+    score.grid(False)
+    score.plot_surface(x, y, z_masked, cmap="gist_gray", lw=0.5, rstride=1, cstride=1)
+    score.set_xlabel("round")
+    score.set_ylabel("score bin")
+    score.view_init(elev=90, azim=0)
+    
+    ### Rule evolution
+    ruleComps = [ruleSnaps[:,:,:,n] for n in range(ruleSnaps.shape[-1])]
+    axes = []
+    labels = ["Rule 1", "Rule 2", "Rule 3", "Rule 4"]
+    for id, (rule, label) in enumerate(zip(ruleComps,labels)):
+        x, y, z = flattenDataToHist(rule, max=1)
+        z_masked = np.ma.masked_where(z == 0, z)
+        plot = fig.add_subplot(nrows, ncols, 2+id, projection="3d")
+        plot.grid(False)
+        plot.plot_surface(x, y, z_masked, cmap="gist_gray", lw=0.5, rstride=1, cstride=1)
+        plot.set_xlabel("round")
+        plot.set_ylabel("rule value")
+        plot.set_title(label)
+        plot.view_init(elev=90, azim=0)
+        axes.append(plot)
+    plt.show()
+
+
+
 def displayFrames(agentFrames, scoreFrames, labelfrequency, label=False):
     fig1, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2,3, figsize=(16,8))
     # Agents

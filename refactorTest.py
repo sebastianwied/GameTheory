@@ -10,11 +10,10 @@ from displaying import *
 from evolution import *
 from time import perf_counter
 
-agentgrid = perlinParamGrid((64,64), (4,4))
+agentgrid = perlinParamGrid((64,64), (1,1))
 adjacencies = gridAdjacencyTable(agentgrid, 1)
 start = perf_counter()
 scores, scoresnaps, agentsnaps, agentrulesnaps, agents = gridTournament(iters, rounds, agentgrid, 1, gridParameterEvolution)
 end = perf_counter()
-print(agentrulesnaps.shape)
-displayMemoryOne(agentgrid, agentsnaps, agentrulesnaps, scoresnaps)
-print(end-start)
+contourPlots(scoresnaps, scoresnaps[-1], agentrulesnaps, iters)
+#displayMemoryOne(agentgrid, agentsnaps, agentrulesnaps, scoresnaps)

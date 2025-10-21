@@ -98,7 +98,7 @@ def flattenDataToHist(data, max=None):
     y, x = np.meshgrid(y, x)
     return x, y, z
 
-def contourPlots(scoreSnaps, totalScore, ruleSnaps, iters):
+def heightmaps(scoreSnaps, totalScore, ruleSnaps, iters):
     # Generate score 3d data
     # x axis is round
     # y is histogram buckets

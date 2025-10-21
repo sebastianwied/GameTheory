@@ -6,11 +6,10 @@ import subprocess
 import os
 from datetime import datetime
 import csv
-from display import displayAsImage, contourPlots
+from display import displayAsImage, heightmaps
 
 # compile with g++ -O3 -std=c++17 sim.cpp -o sim -pthread
-
-######################################################
+#####################
 ######### Handle data directory creation #############
 ######################################################
 DATA_PATH = Path("./Data")
@@ -49,9 +48,9 @@ class Experiment:
         self.evolutionChance = 0.2
         self.mutationRate = 0.001
         self.payoffMatrix = [[1,5],[0,3]]
-        self.repeats = 1
-        self.seed1 = random.rand()*10000
-        self.seed2 = random.rand()*10000
+        self.repeats = 1 ## TODO! When repeats != 1, it will overwrite the data from previous repeats. Fix!
+        self.seed1 = int(random.rand()*10000)
+        self.seed2 = int(random.rand()*10000)
         
         ### Experiment execution
         self.execPath = execPath
@@ -95,7 +94,10 @@ class Experiment:
                 self.seed2 = int(value)
 
     def run(self):
+        self.saveParams()
         for repeat in range(self.repeats):
+            subPath = self.logPath / Path(f"repeat{repeat}")
+            subPath.mkdir(parents=True, exist_ok=False)
             try: 
                 subprocess.run(
                 [self.execPath, str(self.payoffMatrix[0][0]), str(self.payoffMatrix[0][1]),
@@ -104,10 +106,20 @@ class Experiment:
                 str(self.maxN), str(self.rounds), str(self.iters),
                 str(self.snaps), str(self.evolutionRate), str(self.mutationRate), 
                 str(self.evolutionChance), str(self.seed1), str(self.seed2),
-                str(self.logPath)]
+                str(subPath)]
                 )
             except subprocess.CalledProcessError:
                 pass
+    
+    def saveParams(self):
+        with open(str(self.logPath/Path("params.csv")), "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(["p00", "p01","p10","p11","gridN","res0","res1","maxN", "rounds", "iters", "snaps", "evolutionRate", "evolutionChance", "mutationRate", "seed1", "seed2"])
+            writer.writerow([
+                self.payoffMatrix[0][0],self.payoffMatrix[0][1],self.payoffMatrix[1][0],self.payoffMatrix[1][1],
+                self.gridN, self.res[0], self.res[1], self.maxN, self.rounds, self.iters, self.snaps,
+                self.evolutionRate, self.evolutionChance, self.mutationRate, self.seed1, self.seed2
+                ])
     
     def __repr__(self):
         return f"Payoff matrix: \n{self.payoffMatrix}, \nRounds: {self.rounds}, Iters: {self.iters}"
@@ -141,6 +153,9 @@ class ExperimentBuilder:
         return experiments
 
     def parameterRange(self, start, end, steps, param, paramDict=dict()):
+        if param == "payoffMatrix":
+            print("Use payoffMatrixRange. No experiments created")
+            return
         range = np.linspace(start, end, steps)
         experiments = []
         for val in range:
@@ -161,7 +176,6 @@ class ExperimentBuilder:
             exp.run()
 
 def load_csv(filename):
-    """Load a CSV file and return a 2D numpy array."""
     data = np.loadtxt(filename, delimiter=',')
     return data
 
@@ -180,24 +194,29 @@ def fromExperiments(exps):
 
 def fromPaths(paths):
     for exp in paths:
-        df = pd.read_csv(str(exp/Path("params.csv")), index_col=0)
-        params = df['Value'].apply(pd.to_numeric).to_dict()
+        dirs = [p for p in exp.iterdir() if p.is_dir()]
+        print(dirs)
+        df = pd.read_csv(str(exp / Path("params.csv")))
+        params = df.iloc[0].to_dict()
         snaps = int(params["snaps"])
         N = int(params["gridN"])
         maxN = int(params["maxN"])
         rounds = int(params["rounds"])
-        matrix = [[int(params["p00"]),int(params["p01"])],[int(params["p10"]),int(params["p11"])]]
-        scoreSnaps = load_csv(str(exp/Path("nonCumulativeScore.csv")))
-        totalScore = load_csv(str(exp/Path("totalScore.csv")))
-        ruleSnaps = load_csv(str(exp/Path("ruleSnaps.csv")))
-        ruleSnaps = ruleSnaps.reshape(snaps, N, N, 4**maxN)
-        scoreSnaps = scoreSnaps.reshape(snaps, N, N)
-        displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix)
-        contourPlots(scoreSnaps, totalScore, ruleSnaps, params["iters"])
-pass
+        matrix = [[float(params["p00"]),float(params["p01"])],[float(params["p10"]),float(params["p11"])]]
+        for dir in dirs:
+            # Extract data
+            scoreSnaps = load_csv(str(dir/Path("nonCumulativeScore.csv")))
+            totalScore = load_csv(str(dir/Path("totalScore.csv")))
+            ruleSnaps = load_csv(str(dir/Path("ruleSnaps.csv")))
+            ruleSnaps = ruleSnaps.reshape(snaps, N, N, 4**maxN)
+            scoreSnaps = scoreSnaps.reshape(snaps, N, N)
+            # Plot
+            displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix)
+            #heightmaps(scoreSnaps, totalScore, ruleSnaps, params["iters"])
+
 
 builder = ExperimentBuilder("./simTest")
-exps = builder.payoffMatrixRange(3,4,5,(1,1))
-#builder.runAll()
-#builder.experimentList()
+exps = builder.payoffMatrixRange(3,4,2,(1,1), {"rounds": 200, "repeats": 2})
+builder.runAll()
+builder.experimentList()
 fromTracker()

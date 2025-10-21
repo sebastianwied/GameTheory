@@ -766,11 +766,6 @@ int main(int argc, char** argv) {
         {atof(argv[3]), atof(argv[4])}
     };
 
-    //cout << "Payoff matrix:" << endl;
-    //for (auto &row : payoffMatrix) {
-    //    for (auto v : row) cout << v << " ";
-    //    cout << endl;
-    //}
     int gridN = atoi(argv[5]);
     pair<int,int> res = {atoi(argv[6]),atoi(argv[7])};
     int maxN = atoi(argv[8]);
@@ -785,102 +780,16 @@ int main(int argc, char** argv) {
 
     std::string path = argv[17];
 
-    std::ofstream file(path+"/params.csv");
-    std::cout << path+"/params.csv";
-    if (!file.is_open()) {
-        std::cerr << "Error: Could not open file for writing.\n";
-        return 1;
-    }
-
     cout << "Building grid...\n";
     AgentGrid grid = blankGrid(gridN, res, maxN, seed);
 
-    // Write CSV header
-    file << "Parameter,Value\n";
-
-    // Write each parameter
-    file << "gridN," << gridN << "\n";
-    file << "res_x," << res.first << "\n";
-    file << "res_y," << res.second << "\n";
-    file << "maxN," << maxN << "\n";
-    file << "rounds," << rounds << "\n";
-    file << "iters," << iters << "\n";
-    file << "snaps," << snaps << "\n";
-    file << "evolutionRate," << evolutionRate << "\n";
-    file << "mutationRate," << mutationRate << "\n";
-    file << "evolutionChance," << evolutionChance << "\n";
-    file << "p00," << payoffMatrix[0][0] <<"\np01,"<< payoffMatrix[0][1] << "\np10," << payoffMatrix[1][0] << "\np11," << payoffMatrix[1][1] << "\n";
-
-    file.close();
-    std::cout << "Parameters written to params.csv successfully.\n";
-
     cout << "Running tournament (" << rounds << " rounds, " << iters << " iters per match)...\n";
-    //TorusResult resu = torusTournamentNoEvolution(grid, iters, rounds, snaps);
     TorusResult resu = torusTournament(grid, iters, rounds, snaps, evolutionRate, mutationRate, evolutionChance);
 
-    cout << "Writing CSV outputs...\n";
     write_scoreSnaps_csv(resu.scoreSnaps, path+"/scoreSnaps.csv");
     write_totalScore_csv(resu.totalScore, path+"/totalScore.csv");
     write_ruleSnaps_csv(resu.ruleSnaps, path+"/ruleSnaps.csv");
     write_nonCumulative_csv(resu.nonCumulativeScoreSnaps, path+"/nonCumulativeScore.csv");
 
-    cout << "Done. Files created: scoreSnaps.csv, totalScore.csv, ruleSnaps.csv, nonCumulativeScore.csv\n";
-    return 0;
-}
-
-
-int mainDeprecated(int argc, char** argv) {
-    // Parameters mirror your testing.py
-    int gridN = 32;
-    pair<int,int> res = {2,2};
-    int maxN = 1;
-    int rounds = 10000;
-    int iters = 100;
-    int snaps = 500;
-    double evolutionRate = 0.1;
-    double mutationRate = 0.001;
-    double evolutionChance = 0.2;
-
-    payoffMatrix = {{1,5},{0,3.2}};
-
-    std::ofstream file("params.csv");
-    if (!file.is_open()) {
-        std::cerr << "Error: Could not open file for writing.\n";
-        return 1;
-    }
-
-    // Write CSV header
-    file << "Parameter,Value\n";
-
-    // Write each parameter
-    file << "gridN," << gridN << "\n";
-    file << "res_x," << res.first << "\n";
-    file << "res_y," << res.second << "\n";
-    file << "maxN," << maxN << "\n";
-    file << "rounds," << rounds << "\n";
-    file << "iters," << iters << "\n";
-    file << "snaps," << snaps << "\n";
-    file << "evolutionRate," << evolutionRate << "\n";
-    file << "mutationRate," << mutationRate << "\n";
-    file << "evolutionChance," << evolutionChance << "\n";
-    file << "p00," << payoffMatrix[0][0] <<"\np01,"<< payoffMatrix[0][1] << "\np10," << payoffMatrix[1][0] << "\np11," << payoffMatrix[1][1] << "\n";
-
-    file.close();
-    std::cout << "Parameters written to params.csv successfully.\n";
-
-    cout << "Building grid...\n";
-    AgentGrid grid = blankGrid(gridN, res, maxN, /*seed=*/0);
-
-    cout << "Running tournament (" << rounds << " rounds, " << iters << " iters per match)...\n";
-    //TorusResult resu = torusTournamentNoEvolution(grid, iters, rounds, snaps);
-    TorusResult resu = torusTournament(grid, iters, rounds, snaps, evolutionRate, mutationRate, evolutionChance);
-    
-    cout << "Writing CSV outputs...\n";
-    write_scoreSnaps_csv(resu.scoreSnaps, "scoreSnaps.csv");
-    write_totalScore_csv(resu.totalScore, "totalScore.csv");
-    write_ruleSnaps_csv(resu.ruleSnaps, "ruleSnaps.csv");
-    write_nonCumulative_csv(resu.nonCumulativeScoreSnaps, "nonCumulativeScore.csv");
-
-    cout << "Done. Files created: scoreSnaps.csv, totalScore.csv, ruleSnaps.csv, nonCumulativeScore.csv\n";
     return 0;
 }

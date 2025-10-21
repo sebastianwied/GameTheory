@@ -97,7 +97,7 @@ for matrix, samples in zip(payoffMatrices, sampleRepeats):
         scoreDeltas.append(scoreDelta)
         
         displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix)
-        #contourPlots(scoreSnaps, totalScore, ruleSnaps, params["iters"])
+        contourPlots(scoreSnaps, totalScore, ruleSnaps, params["iters"])
         
         # Log it
         with open(LOG_FILE, "a", newline="") as f:

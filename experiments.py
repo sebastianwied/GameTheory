@@ -6,7 +6,7 @@ import subprocess
 import os
 from datetime import datetime
 import csv
-from display import displayAsImage, heightmaps
+from display import displayAsImage, heightmaps, stateSpace4d
 
 # compile with g++ -O3 -std=c++17 sim.cpp -o sim -pthread
 #####################
@@ -51,6 +51,7 @@ class Experiment:
         self.repeats = 1 ## TODO! When repeats != 1, it will overwrite the data from previous repeats. Fix!
         self.seed1 = int(random.rand()*10000)
         self.seed2 = int(random.rand()*10000)
+        self.varySeed = False
         
         ### Experiment execution
         self.execPath = execPath
@@ -92,12 +93,17 @@ class Experiment:
                 self.seed1 = int(value)
             case "seed2":
                 self.seed2 = int(value)
+            case "varySeed":
+                self.varySeed = bool(value)
 
     def run(self):
         self.saveParams()
         for repeat in range(self.repeats):
             subPath = self.logPath / Path(f"repeat{repeat}")
             subPath.mkdir(parents=True, exist_ok=False)
+            if self.varySeed:
+                self.seed1 = int(random.rand()*10000)
+                self.seed2 = int(random.rand()*10000)
             try: 
                 subprocess.run(
                 [self.execPath, str(self.payoffMatrix[0][0]), str(self.payoffMatrix[0][1]),
@@ -136,6 +142,7 @@ class ExperimentBuilder:
         exp = self.new()
         for key, value in paramDict.items():
             exp.setParam(key, value)
+        self.experiments.append(exp)
         return exp
     
     def payoffMatrixRange(self, start, end, steps, index, paramDict=dict()):
@@ -195,7 +202,6 @@ def fromExperiments(exps):
 def fromPaths(paths):
     for exp in paths:
         dirs = [p for p in exp.iterdir() if p.is_dir()]
-        print(dirs)
         df = pd.read_csv(str(exp / Path("params.csv")))
         params = df.iloc[0].to_dict()
         snaps = int(params["snaps"])
@@ -213,10 +219,36 @@ def fromPaths(paths):
             # Plot
             displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix)
             #heightmaps(scoreSnaps, totalScore, ruleSnaps, params["iters"])
+            #stateSpace4d(ruleSnaps)
+
+def superPlot(tracker="experiments.txt"):
+    path = ""
+    with open(tracker, "r") as f:
+        for line in f:
+            path = Path(line.strip())
+    dirs = [p for p in path.iterdir() if p.is_dir()]
+    df = pd.read_csv(str(path / Path("params.csv")))
+    params = df.iloc[0].to_dict()
+    snaps = int(params["snaps"])
+    N = int(params["gridN"])
+    maxN = int(params["maxN"])
+    rounds = int(params["rounds"])
+    matrix = [[float(params["p00"]),float(params["p01"])],[float(params["p10"]),float(params["p11"])]]
+    finalRules = []
+    for dir in dirs:
+        # Extract data
+        ruleSnaps = load_csv(str(dir/Path("ruleSnaps.csv")))
+        ruleSnaps = ruleSnaps.reshape(snaps, N, N, 4**maxN)
+        finalRules.append(ruleSnaps[-1])
+    finalRules = np.array(finalRules)
+    print(finalRules.shape)
+    stateSpace4d(np.array(finalRules))
 
 
 builder = ExperimentBuilder("./simTest")
-exps = builder.payoffMatrixRange(3,4,2,(1,1), {"rounds": 200, "repeats": 2})
+exp = builder.fromParamDict({"repeats": 50, "rounds": 10000, "snaps": 10, "gridN": 32, "varySeed": True, 
+                            "payoffMatrix": [[1,5],[0,3]], "res": (4,4)})
 builder.runAll()
 builder.experimentList()
-fromTracker()
+#fromTracker()
+superPlot()

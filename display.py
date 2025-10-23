@@ -12,8 +12,8 @@ def load_csv(filename):
 
 def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     fig1, ((ax1,ax2,fax1,fax2)
-      ,(ax3,ax4,fax3,fax4)
-      ,(ax5,ax6,fax5,fax6)) = plt.subplots(3,4,figsize=(16,8))
+    ,(ax3,ax4,fax3,fax4)
+    ,(ax5,ax6,fax5,fax6)) = plt.subplots(3,4,figsize=(16,8))
 
     mspf = 60 # ms per frame
     im = ax1.imshow(scoreSnaps[0], cmap="viridis", vmin=0, vmax=np.nanmax(scoreSnaps[-1]))
@@ -132,6 +132,42 @@ def heightmaps(scoreSnaps, totalScore, ruleSnaps, iters):
         axes.append(plot)
     plt.show()
     
+def stateSpace4d(ruleSnaps):
+    x = []
+    y = []
+    z = []
+    colors = []
+    
+    # R1 = DD, R2 = DC, R3 = CD, R4 = CC
+    ruleR1s = ruleSnaps[:,:,:,0]
+    ruleR2s = ruleSnaps[:,:,:,1]
+    ruleR3s = ruleSnaps[:,:,:,2]
+    ruleR4s = ruleSnaps[:,:,:,3]
+    
+    x = np.array([np.mean(el) for el in ruleR1s])
+    print(x)
+    y = np.array([np.mean(el) for el in ruleR2s])
+    z = np.array([np.mean(el) for el in ruleR3s])
+    r4mean = np.array([np.mean(el) for el in ruleR4s])
+    cmap = plt.colormaps['viridis']
+    colors = cmap(r4mean)
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d') # Create a 3D subplot
+    phase = ax.scatter(x, y, z, c=colors)
+    ax.scatter(x[0],y[0],z[0],c="black", linewidths=5)
+    ax.set_xlabel("DD mean")
+    ax.set_ylabel("DC mean")
+    ax.set_zlabel("CD mean")
+    ax.set_xlim(0,1)
+    ax.set_ylim(0,1)
+    ax.set_zlim(0,1)
+    ax.set_title("color: CC mean, yellower = closer to 1")
+    
+    ## PLOT PROJECTIONS ON THE PLANES
+    
+    plt.show()
+    
 if __name__ == "__main__":
     # Example: load from CSV files exported by your C++ simulation
     df = pd.read_csv("params.csv", index_col=0)
@@ -156,4 +192,4 @@ if __name__ == "__main__":
     print(f"Score final mean: {np.mean(scoreSnaps[-1])}")
 
     displayAsImage(scoreSnaps, totalScore, ruleSnaps)
-    contourPlots(scoreSnaps, totalScore, ruleSnaps, params["iters"])
+    heightmaps(scoreSnaps, totalScore, ruleSnaps, params["iters"])

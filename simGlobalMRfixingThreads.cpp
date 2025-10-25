@@ -29,11 +29,12 @@
 #include <unordered_set>
 #include <cstdlib>
 #include <memory>
+#include <omp.h>
 using namespace std;
 
 /* ---------------------------
-   Utility / random helpers
-   --------------------------- */
+Utility / random helpers
+--------------------------- */
 
 using u64 = unsigned long long;
 std::mt19937_64 grid_rng;
@@ -48,9 +49,9 @@ int randint(int a, int b) { // inclusive [a,b]
 }
 
 /* ---------------------------
-   Perlin / Fractal noise
-   Ported from your perlin_numpy implementation
-   --------------------------- */
+Perlin / Fractal noise
+Ported from your perlin_numpy implementation
+--------------------------- */
 
 static inline double interpolant(double t) {
     // t * t * t * (t * (t * 6 - 15) + 10)
@@ -209,6 +210,22 @@ struct Memory1 {
         }
     }
 
+    int playMoveStateless(int theirPrev, int &prevMoveLocal, double seed, int roundNum) {
+        // if (roundNum == 0) {
+        //     prevMove = startMove;
+        //     return startMove;
+        // } Omit in favor of doing this check when running the individual game, rather than at every call to playMove
+        int key = (prevMove << 1) | theirPrev;
+        double prob = rule[key];
+        if (seed < prob) {
+            prevMoveLocal = COOP;
+            return COOP;
+        } else {
+            prevMoveLocal = DEF;
+            return DEF;
+        }
+    }
+
     void reset() {
         score = 0.0;
         prevMove = startMove;
@@ -362,7 +379,7 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
         auto matchups = pickOpponents(agentGrid);
         vector<vector<int>> playedTracker(yLen, vector<int>(xLen, 0));
         vector<vector<double>> scoreTracker(yLen, vector<double>(xLen, 0.0));
-
+        
         // BEFORE launching threads: create deterministic thread seeds and decide nThreads
         int nThreads = std::min(static_cast<int>(std::thread::hardware_concurrency()), (int) yLen);
         if (nThreads < 1) nThreads = 1;
@@ -587,7 +604,6 @@ void write_totalScore_csv(const vector<vector<double>> &totalScore, const string
     }
     f.close();
 }
-
 
 void write_ruleSnaps_csv(const vector<vector<vector<double>>> &ruleSnaps, const string &fname) {
     ofstream f(fname);

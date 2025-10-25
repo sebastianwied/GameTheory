@@ -8,9 +8,9 @@ Required packages:
 - Numpy (current version: 2.2.6)
 - Pandas (current version: 2.3.3)
 
-Beyond python setup, the ```simTest.cpp``` file needs to be compiled (sim is old, working on it). On mac, the command I'm using to compile is:
+Beyond python setup, the ```sim.cpp``` file needs to be compiled (sim is old, working on it). On mac, the command I'm using to compile is:
 
-```g++ -O3 -std=c++17 simTest.cpp -o simTest -pthread```
+```g++ -O3 -std=c++17 sim.cpp -o sim -pthread```
 
 Not sure on windows. Ask chatgpt or something!
 
@@ -19,7 +19,7 @@ The main functionality is provided by experiments.py. This has functionality for
 
 The core of the experiment functionality is the **ExperimentBuilder** class. Instantiation only takes one argument: the local path to the simulation binary. Under my current file structure, the code for creating an ExperimentBuilder is:
 
-```ExperimentBuilder("./simTest")```
+```ExperimentBuilder("./sim")```
 
 The ExperimentBuilder object will keep an internal list of all the experiments created by the object. 
 The functionality for running the experiments runs off this internal list, though the experiment creation functions return the experiments as objects if you would like to do any special further handling with them.
@@ -86,5 +86,5 @@ What does it display? It uses two functions from the ```display.py``` file: ```d
 "mutationRate" = 0.001
 "payoffMatrix" = [[1,5],[0,3]]
 "repeats" = 1
-"seed1" = random.rand()*10000
-"seed2" = random.rand()*10000
+"gridSeed" = random.rand()*10000
+"playSeed" = random.rand()*10000

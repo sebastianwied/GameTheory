@@ -49,9 +49,11 @@ class Experiment:
         self.mutationRate = 0.001
         self.payoffMatrix = [[1,5],[0,3]]
         self.repeats = 1 ## TODO! When repeats != 1, it will overwrite the data from previous repeats. Fix!
-        self.seed1 = int(random.rand()*10000)
-        self.seed2 = int(random.rand()*10000)
+        self.gridSeed = int(random.rand()*10000)
+        self.playSeed = int(random.rand()*10000)
         self.varySeed = False
+        self.inversionPercentage = 0
+        self.inversionRound = self.rounds // 2
         
         ### Experiment execution
         self.execPath = execPath
@@ -89,12 +91,16 @@ class Experiment:
                 self.payoffMatrix = value
             case "repeats":
                 self.repeats = int(value)
-            case "seed1":
-                self.seed1 = int(value)
-            case "seed2":
-                self.seed2 = int(value)
+            case "gridSeed":
+                self.gridSeed = int(value)
+            case "playSeed":
+                self.playSeed = int(value)
             case "varySeed":
                 self.varySeed = bool(value)
+            case "inversionPercentage":
+                self.inversionPercentage = float(value)
+            case "inversionRound":
+                self.inversionRound = int(value)
 
     def run(self):
         self.saveParams()
@@ -111,7 +117,7 @@ class Experiment:
                 str(self.gridN), str(self.res[0]), str(self.res[1]),
                 str(self.maxN), str(self.rounds), str(self.iters),
                 str(self.snaps), str(self.evolutionRate), str(self.mutationRate), 
-                str(self.evolutionChance), str(self.seed1), str(self.seed2),
+                str(self.evolutionChance), str(self.gridSeed), str(self.playSeed),
                 str(subPath)]
                 )
             except subprocess.CalledProcessError:
@@ -120,11 +126,12 @@ class Experiment:
     def saveParams(self):
         with open(str(self.logPath/Path("params.csv")), "w") as f:
             writer = csv.writer(f)
-            writer.writerow(["p00", "p01","p10","p11","gridN","res0","res1","maxN", "rounds", "iters", "snaps", "evolutionRate", "evolutionChance", "mutationRate", "seed1", "seed2"])
+            writer.writerow(["p00", "p01","p10","p11","gridN","res0","res1","maxN", "rounds", "iters", "snaps", "evolutionRate", "evolutionChance", "mutationRate", "seed1", "seed2", "inversionPercentage", "inversionRound"])
             writer.writerow([
                 self.payoffMatrix[0][0],self.payoffMatrix[0][1],self.payoffMatrix[1][0],self.payoffMatrix[1][1],
                 self.gridN, self.res[0], self.res[1], self.maxN, self.rounds, self.iters, self.snaps,
-                self.evolutionRate, self.evolutionChance, self.mutationRate, self.seed1, self.seed2
+                self.evolutionRate, self.evolutionChance, self.mutationRate, self.gridSeed, self.playSeed,
+                self.inversionPercentage, self.inversionRound
                 ])
     
     def __repr__(self):
@@ -138,11 +145,12 @@ class ExperimentBuilder:
     def new(self):
         return Experiment(self.execPath)
 
-    def fromParamDict(self, paramDict):
+    def fromParamDict(self, paramDict, add=True):
         exp = self.new()
         for key, value in paramDict.items():
             exp.setParam(key, value)
-        self.experiments.append(exp)
+        if add==True:
+            self.experiments.append(exp)
         return exp
     
     def payoffMatrixRange(self, start, end, steps, index, paramDict=dict()):
@@ -153,20 +161,39 @@ class ExperimentBuilder:
         baseMatrix[:,index[0], index[1]] = sweep
         experiments = []
         for matrix in baseMatrix:
-            exp = self.fromParamDict(paramDict)
+            exp = self.fromParamDict(paramDict, add=False)
             exp.setParam("payoffMatrix", matrix)
             experiments.append(exp)
             self.experiments.append(exp)
         return experiments
+    
+    def resRange(self, start, end, paramDict=dict()):
+        sweep = [start]
+        while 2*sweep[-1][0] <= end[0]:
+            sweep.append((2*sweep[-1][0],2*sweep[-1][1]))
+        experiments = []
+        for resolution in sweep:
+            exp = self.fromParamDict(paramDict, add=False)
+            exp.setParam("res", resolution)
+            experiments.append(exp)
+            self.experiments.append(exp)
+        return experiments
 
-    def parameterRange(self, start, end, steps, param, paramDict=dict()):
+    def parameterRange(self, start, end, steps, param, paramDict=dict(), varySeed=False):
         if param == "payoffMatrix":
             print("Use payoffMatrixRange. No experiments created")
             return
         range = np.linspace(start, end, steps)
         experiments = []
+        gridSeed = random.rand()*10000
+        playSeed = random.rand()*10000
         for val in range:
-            exp = self.fromParamDict(paramDict)
+            if varySeed == True:
+                gridSeed = random.rand()*10000
+                playSeed = random.rand()*10000
+            paramDict["gridSeed"] = gridSeed
+            paramDict["playSeed"] = playSeed
+            exp = self.fromParamDict(paramDict, add=False)
             exp.setParam(param, val)
             experiments.append(exp)
             self.experiments.append(exp)
@@ -204,6 +231,7 @@ def fromPaths(paths):
         dirs = [p for p in exp.iterdir() if p.is_dir()]
         df = pd.read_csv(str(exp / Path("params.csv")))
         params = df.iloc[0].to_dict()
+        print(params)
         snaps = int(params["snaps"])
         N = int(params["gridN"])
         maxN = int(params["maxN"])
@@ -214,12 +242,14 @@ def fromPaths(paths):
             scoreSnaps = load_csv(str(dir/Path("nonCumulativeScore.csv")))
             totalScore = load_csv(str(dir/Path("totalScore.csv")))
             ruleSnaps = load_csv(str(dir/Path("ruleSnaps.csv")))
-            ruleSnaps = ruleSnaps.reshape(snaps, N, N, 4**maxN)
+            print(ruleSnaps.shape)
+            print(snaps, N, maxN)
+            ruleSnaps = ruleSnaps.reshape(snaps, N, N, 5)
             scoreSnaps = scoreSnaps.reshape(snaps, N, N)
             # Plot
             displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix)
             #heightmaps(scoreSnaps, totalScore, ruleSnaps, params["iters"])
-            #stateSpace4d(ruleSnaps)
+            stateSpace4d(ruleSnaps)
 
 def superPlot(tracker="experiments.txt"):
     path = ""
@@ -231,24 +261,27 @@ def superPlot(tracker="experiments.txt"):
     params = df.iloc[0].to_dict()
     snaps = int(params["snaps"])
     N = int(params["gridN"])
-    maxN = int(params["maxN"])
     rounds = int(params["rounds"])
     matrix = [[float(params["p00"]),float(params["p01"])],[float(params["p10"]),float(params["p11"])]]
     finalRules = []
     for dir in dirs:
         # Extract data
         ruleSnaps = load_csv(str(dir/Path("ruleSnaps.csv")))
-        ruleSnaps = ruleSnaps.reshape(snaps, N, N, 4**maxN)
+        ruleSnaps = ruleSnaps.reshape(snaps, N, N, 5)
         finalRules.append(ruleSnaps[-1])
     finalRules = np.array(finalRules)
     print(finalRules.shape)
     stateSpace4d(np.array(finalRules))
 
 
-builder = ExperimentBuilder("./simTest")
-exp = builder.fromParamDict({"repeats": 50, "rounds": 10000, "snaps": 10, "gridN": 32, "varySeed": True, 
-                            "payoffMatrix": [[1,5],[0,3]], "res": (4,4)})
+builder = ExperimentBuilder("./sim")
+paramdict = {"repeats": 1, "rounds": 30000, "snaps": 200, "gridN": 32, "varySeed": False, 
+                            "payoffMatrix": [[1,5],[0,3.5]], "inversionPercentage": 0.1,
+                            "mutationRate": 0.005}
+exp = builder.fromParamDict(paramdict)
+#builder.resRange((1,1), (16,16), paramdict)
+#builder.fromParamDict(paramdict)
 builder.runAll()
 builder.experimentList()
-#fromTracker()
-superPlot()
+fromTracker()
+#superPlot()

@@ -13,9 +13,10 @@ def load_csv(filename):
 def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     fig1, ((ax1,ax2,fax1,fax2)
     ,(ax3,ax4,fax3,fax4)
-    ,(ax5,ax6,fax5,fax6)) = plt.subplots(3,4,figsize=(16,8))
+    ,(ax5,ax6,fax5,fax6)
+    ,(ax7,ax8,ax9,ax10)) = plt.subplots(4,4,figsize=(16,8))
 
-    mspf = 60 # ms per frame
+    mspf = 120 # ms per frame
     im = ax1.imshow(scoreSnaps[0], cmap="viridis", vmin=0, vmax=np.nanmax(scoreSnaps[-1]))
     ax1.set_title("Score Evolution")
     plt.colorbar(im, ax=ax1)
@@ -32,6 +33,7 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     ruleR2s = ruleSnaps[:,:,:,1]
     ruleR3s = ruleSnaps[:,:,:,2]
     ruleR4s = ruleSnaps[:,:,:,3]
+    mutationRate = ruleSnaps[:,:,:,4]
     # N = 1:
     # R1 = DD, R2 = DC, R3 = CD, R4 = CC
     fig1.suptitle(f"Rule structure: Their move, My move (both from previous round). Color: Bluer => more likely to defect, Yellower => more likely to cooperate\nPayoff Matrix: \n{matrix}")
@@ -54,6 +56,13 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     plt.colorbar(im4, ax=ax6)
     ani4 = anim.FuncAnimation(fig=fig1, func=lambda frame: im4.set_data(ruleR4s[frame]), frames=len(scoreSnaps), interval=mspf)
     ax6.set_title("R4(CC) evolution")
+    
+    im5 = fax1.imshow(mutationRate[0], cmap="viridis", vmin=0, vmax=np.nanmax(mutationRate[-1]))
+    plt.colorbar(im4, ax=fax1)
+    animr = anim.FuncAnimation(fig=fig1, func=lambda frame: im5.set_data(mutationRate[frame]), frames=len(scoreSnaps), interval=mspf)
+    fax1.set_title("Mutation rate evolution")
+    frm = fax2.imshow(mutationRate[-1], cmap="viridis", vmin=0, vmax=np.nanmax(mutationRate[-1]))
+    fax2.set_title("Mutation rate final")
 
     fr1 = fax3.imshow(ruleR1s[-1], cmap="viridis", vmin=0, vmax=1)
     fax3.set_title("R1(DD) final")
@@ -63,6 +72,15 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     fax5.set_title("R3(CD) final")
     fr4 = fax6.imshow(ruleR4s[-1], cmap="viridis", vmin=0, vmax=1)
     fax6.set_title("R4(CC) final")
+    
+    ax7.imshow(ruleR1s[0], cmap="viridis", vmin=0, vmax=1)
+    ax7.set_title("R1(DD) initial")
+    ax8.imshow(ruleR2s[0], cmap="viridis", vmin=0, vmax=1)
+    ax8.set_title("R2(DC) initial")
+    ax9.imshow(ruleR3s[0], cmap="viridis", vmin=0, vmax=1)
+    ax9.set_title("R3(CD) initial")
+    ax10.imshow(ruleR4s[0], cmap="viridis", vmin=0, vmax=1)
+    ax10.set_title("R4(CC) initial")
 
     ax1.axis("off")
     ax2.axis("off")
@@ -70,6 +88,10 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     ax4.axis("off")
     ax5.axis("off")
     ax6.axis("off")
+    ax7.axis("off")
+    ax8.axis("off")
+    ax9.axis("off")
+    ax10.axis("off")
     fax1.axis("off")
     fax2.axis("off")
     fax3.axis("off")
@@ -174,7 +196,6 @@ if __name__ == "__main__":
     params = df['Value'].apply(pd.to_numeric).to_dict()
     snaps = int(params["snaps"])
     N = int(params["gridN"])
-    maxN = int(params["maxN"])
     rounds = int(params["rounds"])
     print(params)
     scoreSnaps = load_csv("nonCumulativeScore.csv")  # shape: (frames, grid_y, grid_x)
@@ -183,7 +204,7 @@ if __name__ == "__main__":
 
     # Reshape ruleSnaps if stored flattened
     yLen, xLen = params["gridN"], params["gridN"]
-    ruleSnaps = ruleSnaps.reshape(snaps, N, N, 4**maxN)
+    ruleSnaps = ruleSnaps.reshape(snaps, N, N, 5)
     scoreSnaps = scoreSnaps.reshape(snaps, N, N)
     
     scoreDelta = np.mean(scoreSnaps[-1]) - np.mean(scoreSnaps[0])

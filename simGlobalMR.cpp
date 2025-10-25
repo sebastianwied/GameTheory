@@ -12,13 +12,11 @@
 #define NOMINMAX
 #include <fstream>
 #include <thread>
-#include <vector>
 #include <random>
 #include <cmath>       // if you use math functions
 #include <chrono>      // if you use std::chrono for timing
 #include <iostream>
 #include <cstdio>
-#include <cmath>
 #include <algorithm>
 #include <vector>
 #include <map>
@@ -30,6 +28,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdlib>
+#include <memory>
 using namespace std;
 
 /* ---------------------------
@@ -37,6 +36,7 @@ using namespace std;
    --------------------------- */
 
 using u64 = unsigned long long;
+std::mt19937_64 grid_rng;
 std::mt19937_64 global_rng;
 
 double uniform01() {
@@ -87,7 +87,7 @@ Noise3D generate_perlin_noise_2d(pair<int,int> shape, pair<int,int> res, pair<bo
         std::uniform_real_distribution<double> angDist(0.0, 2.0 * M_PI);
         vector<vector<pair<double,double>>> gradients(res.first+1, vector<pair<double,double>>(res.second+1));
         for (int i=0;i<=res.first;++i) for (int j=0;j<=res.second;++j) {
-            double ang = angDist(global_rng);
+            double ang = angDist(grid_rng);
             gradients[i][j] = {cos(ang), sin(ang)};
         }
         if (tileable.first) for (int j=0;j<=res.second;++j) gradients[res.first][j] = gradients[0][j];
@@ -165,196 +165,134 @@ Noise3D generate_fractal_noise_2d(pair<int,int> shape, pair<int,int> res, int oc
    MemoryN classes (agents)
    --------------------------- */
 
-const int COOP = 1;
-const int DEF = 0;
+enum Move: int {
+    COOP = 1,
+    DEF = 0
+};
 
-struct MemoryN {
-    int N;
-    int maxN;
-    vector<double> rule; // length 4^maxN
-    unsigned long long startString;
-    unsigned long long prev;
+struct Memory1 {
+    Move startMove;
+    Move prevMove;
+    array<double,4> rule;
     double score;
     string name;
+    double mutationRate;
 
-    MemoryN(int _N=0, unsigned long long startS=0, int _maxN=1) {
-        N = _N;
-        maxN = _maxN;
-        startString = startS;
-        prev = startString;
-        size_t len = 1ULL << (2*maxN); // 4**maxN
-        rule.assign(len, 0.0);
-        score = 0.0;
-        name = "MemoryN";
-    }
+    Memory1(Move _start = COOP, double _mutationRate=0.0):
+        startMove(_start),
+        prevMove(startMove),
+        rule{0.0,0.0,0.0,0.0},
+        mutationRate(_mutationRate),
+        score(0.0),
+        name("MemoryN")
+    {}
 
-    virtual ~MemoryN() = default;
-
-    virtual void startup(unsigned long long startString) {
-        this->startString = startString;
-        this->prev = startString;
+    virtual void startup(Move _start) {
+        this->startMove = _start;
+        this->prevMove = _start;
         this->score = 0.0;
     }
 
-    void addToPast(int move) {
-        // lsb is most recent, msb first move
-        unsigned long long mask = (1ULL << maxN) - 1ULL;
-        prev = ((prev << 1) + (unsigned long long)move) & mask;
-    }
-
-    int playMove(unsigned long long theirPast, double seed, int roundNum) {
-        if (roundNum < N) {
-            // return bit at position roundNum of startString
-            unsigned long long mask = 1ULL << roundNum;
-            return ( (startString & mask) ? COOP : DEF );
-        }
-        unsigned long long myPastMask = (prev & ((1ULL << N) - 1ULL));
-        unsigned long long theirPastMask = (theirPast & ((1ULL << N) - 1ULL));
-        unsigned long long ruleKey = (myPastMask << N) + theirPastMask;
-        double prob = rule[ruleKey];
+    int playMove(int theirPrev, double seed, int roundNum) {
+        // if (roundNum == 0) {
+        //     prevMove = startMove;
+        //     return startMove;
+        // } Omit in favor of doing this check when running the individual game, rather than at every call to playMove
+        int key = (prevMove << 1) | theirPrev;
+        double prob = rule[key];
         if (seed < prob) {
-            addToPast(COOP);
+            prevMove = COOP;
             return COOP;
         } else {
-            addToPast(DEF);
+            prevMove = DEF;
             return DEF;
         }
     }
 
     void reset() {
         score = 0.0;
-        prev = startString;
+        prevMove = startMove;
     }
 
     virtual string repr() const {
         return name;
     }
+
+    void setRule(const array<double, 4> &r) {
+        rule[0] = r[0];
+        rule[1] = r[1];
+        rule[2] = r[2];
+        rule[3] = r[3];
+    }
 };
 
-struct BLANK : public MemoryN {
-    BLANK(int _N=0, unsigned long long startS=0, int _maxN=1) : MemoryN(_N, startS, _maxN) {
+struct BLANK : public Memory1 {
+    BLANK(Move start = COOP) : Memory1(start) {
         name = "BLANK";
-        size_t len = 1ULL << (2*maxN);
-        rule.assign(len, 0.0);
-        startString = startS;
-        prev = startS;
-    }
-    void setRule(const vector<double> &r) {
-        rule = r;
-    }
-};
-
-struct TFT : public MemoryN {
-    TFT(int _maxN=1) : MemoryN(1, 1, _maxN) {
-        name = "TFT";
-        N = 1;
-        size_t len = 1ULL << (2*maxN);
-        rule.assign(len, 0.0);
-        // rule[1::2] = 1 in Python means all odd indices cooperate
-        for (size_t i=0;i<rule.size();++i) if ( (i & 1) == 1 ) rule[i] = 1.0;
-        startString = COOP;
-        prev = COOP;
-    }
-};
-
-struct DU : public MemoryN {
-    DU(int _maxN=1) : MemoryN(0, DEF, _maxN) {
-        name = "DU";
-        N = 0;
-        size_t len = 1ULL << (2*maxN);
-        rule.assign(len, 0.0);
-        startString = DEF;
-        prev = DEF;
-    }
-};
-
-struct CU : public MemoryN {
-    CU(int _maxN=1) : MemoryN(0, COOP, _maxN) {
-        name = "CU";
-        N = 0;
-        size_t len = 1ULL << (2*maxN);
-        rule.assign(len, 1.0);
-        startString = COOP;
-        prev = COOP;
-    }
-};
-
-struct RandAgent : public MemoryN {
-    RandAgent(int _maxN=1) : MemoryN(0, 0, _maxN) {
-        name = "RAND";
-        N = 0;
-        size_t len = 1ULL << (2*maxN);
-        rule.assign(len, 0.5);
-        startString = (uniform01() < 0.5 ? COOP : DEF);
-        prev = startString;
-    }
-    string repr() const override { 
-        return name + " " + to_string((int)startString);
+        rule[0] = 0.0;
+        rule[1] = 0.0;
+        rule[2] = 0.0;
+        rule[3] = 0.0;
+        startMove = start;
+        prevMove = start;
     }
 };
 
 /* ---------------------------
-   Grid generation
-   --------------------------- */
+Grid generation
+--------------------------- */
 
-using AgentGrid = vector<vector<shared_ptr<MemoryN>>>;
-
-// randomGrid(N, maxN)
-AgentGrid randomGrid(int N, int maxN=1) {
-    AgentGrid grid(N, vector<shared_ptr<MemoryN>>(N));
-    for (int r=0;r<N;++r) for (int c=0;c<N;++c) {
-        grid[r][c] = make_shared<RandAgent>(maxN);
-    }
-    return grid;
-}
+using AgentGrid = vector<vector<shared_ptr<Memory1>>>;
 
 // blankGrid(N, res, maxN=1, seed)
-AgentGrid blankGrid(int N, pair<int,int> res, int maxN=1, unsigned seed = 0) {
+AgentGrid blankGrid(int N, pair<int,int> res, unsigned seed = 0) {
     if (seed==0) seed = (unsigned) (uniform01() * 1000.0);
     cout << "seed: " << seed << "\n";
-    // number parameter in original called number=(4**maxN) => use that many channels
-    int number = 1;
-    for (int i=0;i<maxN;++i) number *= 4;
-    auto paramMaps = generate_fractal_noise_2d({N,N}, res, /*octaves=*/1, /*persistence=*/0.5, /*lacunarity=*/2.0, {false,false}, seed, number);
+    constexpr int number = 5; // 4 rules, 1 mutation rate
+    auto paramMaps = generate_fractal_noise_2d(
+        {N,N}, 
+        res, 
+        /*octaves=*/1, 
+        /*persistence=*/0.5, 
+        /*lacunarity=*/2.0, 
+        {false,false}, 
+        seed, 
+        number);
     // paramMaps is number x N x N
     // python code adds +1.3 then divides by 2
     for (int k=0;k<number;++k) for (int i=0;i<N;++i) for (int j=0;j<N;++j) {
         paramMaps[k][i][j] += 1.3;
         paramMaps[k][i][j] /= 2.0;
     }
-    AgentGrid grid(N, vector<shared_ptr<MemoryN>>(N));
+    AgentGrid grid(N, vector<shared_ptr<Memory1>>(N));
     for (int i=0;i<N;++i) for (int j=0;j<N;++j) {
-        auto ag = make_shared<BLANK>(1, 1, maxN);
-        // create rule vector of length 4**maxN. The python did: setRule([i**2 for i in list(paramMaps[:,idr,idc])])
+        auto ag = make_shared<BLANK>(COOP);
+        // create rule vector of length 4. The python did: setRule([i**2 for i in list(paramMaps[:,idr,idc])])
         // paramMaps[:,idr,idc] is "number" values — they square them.
-        vector<double> rule(1ULL << (2*maxN), 0.0);
+        array<double,4> ruleVals;
         // If number (channels) does not equal rule size, we'll distribute or repeat
         // but the Python used list(paramMaps[:,idr,idc]) and squared those values to form rule,
         // meaning rule length == number. But rule length should be 4**maxN. In the python blankGrid,
         // they use number=(4**maxN) so number == rule length. So here it's consistent.
-        if ((int)rule.size() != number) {
-            // fallback: fill uniform
-            for (size_t rr=0; rr<rule.size(); ++rr) rule[rr] = 0.5;
-        } else {
-            for (int k=0;k<number;++k) {
-                double v = paramMaps[k][i][j];
-                rule[k] = v * v;
-                // clamp [0,1]
-                if (rule[k] < 0.0) rule[k] = 0.0;
-                if (rule[k] > 1.0) rule[k] = 1.0;
-            }
+        for (int k=0;k<number-1;++k) {
+            double v = paramMaps[k][i][j];
+            ruleVals[k] = v*v;
+            // clamp [0,1]
+            if (ruleVals[k] < 0.0) ruleVals[k] = 0.0;
+            if (ruleVals[k] > 1.0) ruleVals[k] = 1.0;
         }
-        ag->setRule(rule);
+        ag->setRule(ruleVals);
+        ag->mutationRate = paramMaps[4][i][j];
         grid[i][j] = ag;
     }
     return grid;
 }
 
 /* ---------------------------
-   Tournaments
-   --------------------------- */
+Tournaments
+--------------------------- */
 
-static vector<vector<double>> payoffMatrix = {{1,5},{0,3.01}};
+static vector<vector<double>> payoffMatrix = {{1,5},{0,3}};
 
 struct TorusResult {
     // snapshots: vector of 2D arrays (snap index -> N x N)
@@ -391,18 +329,45 @@ vector<vector<pair<int,int>>> pickOpponents(const AgentGrid &agentGrid) {
     return opponent;
 }
 
-vector<vector<vector<double>>> agentRuleSnapshot(const AgentGrid &agents) {
-    int Y = (int)agents.size();
-    int X = (int)agents[0].size();
-    int ruleLen = (int)agents[0][0]->rule.size();
-    vector<vector<vector<double>>> snap(Y, vector<vector<double>>(X, vector<double>(ruleLen)));
-    for (int i=0;i<Y;++i) for (int j=0;j<X;++j) {
-        for (int k=0;k<ruleLen;++k) snap[i][j][k] = agents[i][j]->rule[k];
+static const pair<int,int> DIRS[8] = {
+    { 1, 0}, {-1, 0}, {0, 1}, {0,-1},
+    { 1, 1}, { 1,-1}, {-1, 1}, {-1,-1}
+};
+
+vector<vector<pair<int,int>>> pickOpponentsNew(const AgentGrid &agents) {
+    int Y = agents.size();
+    int X = agents[0].size();
+
+    vector<vector<pair<int,int>>> opp(Y, vector<pair<int,int>>(X));
+
+    for(int y=0; y<Y; ++y) {
+        for(int x=0; x<X; ++x) {
+            int d = rand() % 8;
+            int nx = (x + DIRS[d].first + X) % X;
+            int ny = (y + DIRS[d].second + Y) % Y;
+            opp[y][x] = {nx, ny};
+        }
+    }
+    return opp;
+}
+
+vector<vector<array<double,5>>> agentRuleSnapshot(const AgentGrid &agents) {
+    int Y = agents.size();
+    int X = agents[0].size();
+
+    vector<vector<array<double,5>>> snap(Y, vector<array<double,5>>(X));
+    for(int i=0; i<Y; ++i){
+        for(int j=0; j<X; ++j) {
+            for(int k=0; k<4; ++k) snap[i][j][k] = agents[i][j]->rule[k];
+            snap[i][j][4] = agents[i][j]->mutationRate;
+        }
     }
     return snap;
 }
 
-TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snaps, float evolutionRate, float evolutionChance, float mutationRate) {
+TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snaps, float evolutionRate, 
+    float evolutionChance, float mutationRate, float inversionPercentage, int inversionRound) {
+
     int yLen = (int)agentGrid.size();
     int xLen = (int)agentGrid[0].size();
     int N = yLen * xLen;
@@ -412,13 +377,16 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
     vector<vector<double>> paddedScore(yLen+2, vector<double>(xLen+2, 0.0));
 
     for (int round=0; round<rounds; ++round) {
+        if (round == inversionRound) {
+            //invertCentralBlock(agentGrid, inversionPercentage);
+        }
         // PLAY MATCHES
         auto matchups = pickOpponents(agentGrid);
         vector<vector<int>> playedTracker(yLen, vector<int>(xLen, 0));
         vector<vector<double>> scoreTracker(yLen, vector<double>(xLen, 0.0));
 
         // BEFORE launching threads: create deterministic thread seeds and decide nThreads
-        int nThreads = std::min(static_cast<int>(std::thread::hardware_concurrency()), yLen);
+        int nThreads = std::min(static_cast<int>(std::thread::hardware_concurrency()), (int) yLen);
         if (nThreads < 1) nThreads = 1;
 
         // Create thread seeds deterministically using global_rng (seeded in main)
@@ -459,8 +427,8 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
                     for (int s = 0; s < 2*iters; ++s) seeds[s] = local_uniform01();
 
                     for (int n = 0; n < iters; ++n) {
-                        unsigned long long a1prev = a1->prev;
-                        unsigned long long a2prev = a2->prev;
+                        unsigned long long a1prev = a1->prevMove;
+                        unsigned long long a2prev = a2->prevMove;
                         int a1move = a1->playMove(a2prev, seeds[n], n);
                         int a2move = a2->playMove(a1prev, seeds[n+iters], n);
                         // accumulate into thread-local arrays
@@ -474,12 +442,12 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
         };
 
 
-        int rowsPerThread = std::max(1, yLen / nThreads);
+        int rowsPerThread = std::max(1, ( (int) yLen) / nThreads);
         int row = 0;
         vector<thread> threads;
         for (int t = 0; t < nThreads; ++t) {
             int startR = row;
-            int endR = std::min(yLen, row + rowsPerThread);
+            int endR = std::min((int) yLen, row + rowsPerThread);
             if (t == nThreads - 1) endR = yLen;
             threads.emplace_back(worker, t, startR, endR);
             row = endR;
@@ -566,7 +534,7 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
                 for (size_t k=0;k<ruleShift2.size();++k) {
                     ruleShift2[k] = ((uniform01() * 2.0) - 1.0) * mutationRate;
                 }
-                vector<double> newRule = agentGrid[idy][idx]->rule;
+                array<double,4> newRule = agentGrid[idy][idx]->rule;
                 for (size_t k=0;k<newRule.size();++k) newRule[k] = newRule[k] + ruleShift[k] + ruleShift2[k];
                 for (size_t k=0;k<newRule.size();++k) {
                     if (newRule[k] < 0.0) newRule[k] = 0.0;
@@ -574,11 +542,11 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
                 }
                 // assign to newGrid copy
                 // make a fresh BLANK agent to hold new rule while preserving other meta
-                auto newAgent = make_shared<BLANK>(agentGrid[idy][idx]->N, agentGrid[idy][idx]->startString, agentGrid[idy][idx]->maxN);
+                auto newAgent = make_shared<BLANK>(agentGrid[idy][idx]->startMove);
                 newAgent->name = agentGrid[idy][idx]->name;
                 newAgent->rule = newRule;
-                newAgent->startString = agentGrid[idy][idx]->startString;
-                newAgent->prev = agentGrid[idy][idx]->prev;
+                newAgent->startMove = agentGrid[idy][idx]->startMove;
+                newAgent->prevMove = agentGrid[idy][idx]->prevMove;
                 newGrid[idy][idx] = newAgent;
             }
         }
@@ -590,7 +558,7 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
             auto ruleSnap = agentRuleSnapshot(agentGrid);
             // For storage simplicity, push ruleSnaps as flattened vectors per cell
             // but we'll convert to vector<vector<vector<double>>> where innermost is concatenated rule vector per cell
-            int ruleLen = (int)agentGrid[0][0]->rule.size();
+            size_t ruleLen = 5;//(int)agentGrid[0][0]->rule.size();
             // flatten rules into 2D matrix of (y, x*ruleLen) to mimic original
             vector<vector<double>> flatRules(yLen, vector<double>(xLen * ruleLen));
             for (int iy=0; iy<yLen; ++iy) for (int ix=0; ix<xLen; ++ix) {
@@ -607,82 +575,9 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
     return out;
 }
 
-// torusTournamentNoEvolution is similar but without the evolution stage
-TorusResult torusTournamentNoEvolution(AgentGrid agentGrid, int iters, int rounds, int snaps) {
-    int yLen = (int)agentGrid.size();
-    int xLen = (int)agentGrid[0].size();
-    int N = yLen * xLen;
-    TorusResult out;
-    vector<vector<double>> totalScore(yLen, vector<double>(xLen, 0.0));
-    int snapEvery = max(1, rounds / snaps);
-
-    for (int round=0; round<rounds; ++round) {
-        auto matchups = pickOpponents(agentGrid);
-        vector<vector<int>> playedTracker(yLen, vector<int>(xLen, 0));
-        vector<vector<double>> scoreTracker(yLen, vector<double>(xLen, 0.0));
-
-        // parallelize by rows
-        int nThreads = min((int)thread::hardware_concurrency(), yLen);
-        vector<thread> threads;
-        auto worker = [&](int startRow, int endRow) {
-            for (int idy=startRow; idy<endRow; ++idy) {
-                for (int idx=0; idx<xLen; ++idx) {
-                    auto match = matchups[idy][idx];
-                    auto a1 = agentGrid[idy][idx];
-                    auto a2 = agentGrid[match.second][match.first];
-                    playedTracker[idy][idx] += 1;
-                    playedTracker[match.second][match.first] += 1;
-                    vector<double> seeds(2*iters);
-                    for (int s=0;s<2*iters;++s) seeds[s] = uniform01();
-                    for (int n=0;n<iters;++n) {
-                        unsigned long long a1prev = a1->prev;
-                        unsigned long long a2prev = a2->prev;
-                        int a1move = a1->playMove(a2prev, seeds[n], n);
-                        int a2move = a2->playMove(a1prev, seeds[n+iters], n);
-                        scoreTracker[idy][idx] += payoffMatrix[a1move][a2move];
-                        scoreTracker[match.second][match.first] += payoffMatrix[a2move][a1move];
-                    }
-                    a1->reset(); a2->reset();
-                }
-            }
-        };
-        int rowsPerThread = max(1, yLen / nThreads);
-        int row = 0;
-        for (int t=0;t<nThreads;++t) {
-            int s = row;
-            int e = min(yLen, row + rowsPerThread);
-            if (t == nThreads-1) e = yLen;
-            threads.emplace_back(worker, s, e);
-            row = e;
-        }
-        for (auto &th : threads) if (th.joinable()) th.join();
-        threads.clear();
-
-        for (int i=0;i<yLen;++i) for (int j=0;j<xLen;++j) {
-            if (playedTracker[i][j] > 0) scoreTracker[i][j] /= (double)playedTracker[i][j];
-            totalScore[i][j] += scoreTracker[i][j];
-        }
-
-        if (round == 1 || ((round % snapEvery) == 0 && (round / snapEvery) > 0)) {
-            out.scoreSnaps.push_back(totalScore);
-            auto ruleSnap = agentRuleSnapshot(agentGrid);
-            int ruleLen = (int)agentGrid[0][0]->rule.size();
-            vector<vector<double>> flatRules(yLen, vector<double>(xLen * ruleLen));
-            for (int iy=0; iy<yLen; ++iy) for (int ix=0; ix<xLen; ++ix)
-                for (int k=0;k<ruleLen;++k) flatRules[iy][ix*ruleLen + k] = ruleSnap[iy][ix][k];
-            out.ruleSnaps.push_back(flatRules);
-            out.nonCumulativeScoreSnaps.push_back(scoreTracker);
-            cout << "progress: " << (round / snapEvery) << " / " << snaps << "\n";
-        }
-    }
-
-    out.totalScore = totalScore;
-    return out;
-}
-
 /* ---------------------------
-   Output helpers (CSV)
-   --------------------------- */
+Output helpers (CSV)
+--------------------------- */
 
 void write_scoreSnaps_csv(const vector<vector<vector<double>>> &scoreSnaps, const string &fname) {
     ofstream f(fname);
@@ -715,19 +610,25 @@ void write_totalScore_csv(const vector<vector<double>> &totalScore, const string
     f.close();
 }
 
+
 void write_ruleSnaps_csv(const vector<vector<vector<double>>> &ruleSnaps, const string &fname) {
     ofstream f(fname);
     // Each line: snap_index,y,x,ruleIndex,ruleValue   (sparse long form)
-    for (size_t s=0; s<ruleSnaps.size(); ++s) {
+    int snaps = ruleSnaps.size();
+    // For each snap
+    for (int s=0; s<snaps; ++s) {
+        //For each grid flatRules
         auto &flatRules = ruleSnaps[s]; // y -> x*ruleLen
         int y = (int)flatRules.size();
         int Xflat = (int)flatRules[0].size();
         // we don't know ruleLen directly; but it's Xflat / xLen. To keep things simple, output flattened full lines:
         // for each row write all values as a long comma-separated line (snap per line)
+        // For row I
         for (int i=0;i<y;++i) {
+            // for column J
             for (int j=0;j<Xflat;++j) {
-                f << flatRules[i][j];
-                if (j < Xflat-1) f << ",";
+                f << to_string(flatRules[i][j]);
+                if (j<Xflat-1) f << ",";
             }
             f << "\n";
         }
@@ -752,8 +653,8 @@ void write_nonCumulative_csv(const vector<vector<vector<double>>> &ncs, const st
 }
 
 /* ---------------------------
-   main (testing)
-   --------------------------- */
+main (testing)
+--------------------------- */
 
 int main(int argc, char** argv) {
     if (argc < 6) {
@@ -775,16 +676,20 @@ int main(int argc, char** argv) {
     double evolutionRate = atof(argv[12]);
     double mutationRate = atof(argv[13]);
     double evolutionChance = atof(argv[14]);
-    unsigned int seed = (unsigned) std::atoi(argv[15]);
-    global_rng.seed(seed);
+    unsigned int gridSeed = (unsigned) std::atoi(argv[15]);
+    unsigned int playSeed = (unsigned) std::atoi(argv[16]);
+    global_rng.seed(playSeed);
+    grid_rng.seed(gridSeed);
+    double inversionPercentage = atof(argv[17]);//0;
+    int inversionRound = atoi(argv[18]);//1;
 
     std::string path = argv[17];
 
     cout << "Building grid...\n";
-    AgentGrid grid = blankGrid(gridN, res, maxN, seed);
+    AgentGrid grid = blankGrid(gridN, res, gridSeed);
 
     cout << "Running tournament (" << rounds << " rounds, " << iters << " iters per match)...\n";
-    TorusResult resu = torusTournament(grid, iters, rounds, snaps, evolutionRate, mutationRate, evolutionChance);
+    TorusResult resu = torusTournament(grid, iters, rounds, snaps, evolutionRate, mutationRate, evolutionChance, inversionPercentage, inversionRound);
 
     write_scoreSnaps_csv(resu.scoreSnaps, path+"/scoreSnaps.csv");
     write_totalScore_csv(resu.totalScore, path+"/totalScore.csv");

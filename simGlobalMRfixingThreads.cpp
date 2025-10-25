@@ -329,28 +329,6 @@ vector<vector<pair<int,int>>> pickOpponents(const AgentGrid &agentGrid) {
     return opponent;
 }
 
-static const pair<int,int> DIRS[8] = {
-    { 1, 0}, {-1, 0}, {0, 1}, {0,-1},
-    { 1, 1}, { 1,-1}, {-1, 1}, {-1,-1}
-};
-
-vector<vector<pair<int,int>>> pickOpponentsNew(const AgentGrid &agents) {
-    int Y = agents.size();
-    int X = agents[0].size();
-
-    vector<vector<pair<int,int>>> opp(Y, vector<pair<int,int>>(X));
-
-    for(int y=0; y<Y; ++y) {
-        for(int x=0; x<X; ++x) {
-            int d = rand() % 8;
-            int nx = (x + DIRS[d].first + X) % X;
-            int ny = (y + DIRS[d].second + Y) % Y;
-            opp[y][x] = {nx, ny};
-        }
-    }
-    return opp;
-}
-
 vector<vector<array<double,5>>> agentRuleSnapshot(const AgentGrid &agents) {
     int Y = agents.size();
     int X = agents[0].size();
@@ -658,7 +636,7 @@ main (testing)
 
 int main(int argc, char** argv) {
     if (argc < 6) {
-        cerr << "Usage: ./sim p00 p01 p10 p11 gridN res0 res1 maxN rounds iters snaps evolutionRate mutationRate evolutionChance seed\n";
+        cerr << "Usage: ./sim p00 p01 p10 p11 gridN res0 res1 maxN rounds iters snaps evolutionRate mutationRate evolutionChance gridSeed playSeed\n";
         return 1;
     }
 

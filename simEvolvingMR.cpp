@@ -550,9 +550,28 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
                     if (newRule[k] < 0.0) newRule[k] = 0.0;
                     if (newRule[k] > 1.0) newRule[k] = 1.0;
                 }
+
+                //mutationRate evolution.
+                // Find mean of neighboring scores. 
+                // If agent score lower than mean, increase mutationRate by evolutionRate% * uniform01
+                // If agent score higher than mean, decrease mutationRate by evolutionRate% * uniform01
+                // double scoreSum = 0;
+                // for (int py=yMin; py<yMax; ++py) for (int px=xMin; px<xMax; ++px) {
+                //     scoreSum += paddedScore[py][px];
+                // }
+                // scoreSum -= paddedScore[idy+1][idx+1]; // Remove current agent score
+                // scoreSum = scoreSum / 8; // mean
+                // int shiftDir = -1;
+                // if (paddedScore[idy+1][idx+1] < scoreSum) shiftDir = 1;
+                // double mutationShift = shiftDir*(agentGrid[idy][idx]->mutationRate)*shiftPercentage;//*uniform01());
+                // double newMR = mutationShift + agentGrid[idy][idx]->mutationRate;
+                // if (newMR < 0) newMR = 0;
+                // if (newMR > 1) newMR = 1;
+                double newMR = agentGrid[idy][idx]->mutationRate; // Above code leads to bad behavior
+                
                 // assign to newGrid copy
                 // make a fresh BLANK agent to hold new rule while preserving other meta
-                auto newAgent = make_shared<BLANK>(agentGrid[idy][idx]->startMove, agentGrid[idy][idx]->mutationRate);
+                auto newAgent = make_shared<BLANK>(agentGrid[idy][idx]->startMove, newMR);
                 newAgent->name = agentGrid[idy][idx]->name;
                 newAgent->rule = newRule;
                 newAgent->startMove = agentGrid[idy][idx]->startMove;

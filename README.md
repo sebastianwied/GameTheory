@@ -8,9 +8,11 @@ Required packages:
 - Numpy (current version: 2.2.6)
 - Pandas (current version: 2.3.3)
 
-Beyond python setup, the ```sim.cpp``` file needs to be compiled (sim is old, working on it). On mac, the command I'm using to compile is:
+Beyond python setup, the ```sim.cpp``` file needs to be compiled. On mac, the command I'm using to compile is:
 
 ```g++ -O3 -std=c++17 sim.cpp -o sim -pthread```
+
+Replace sim.cpp with simEvolvingMR.cpp or simGlobalMR.cpp. EvolvingMR has mutationrate evolution turned off, model wasn't working.
 
 Not sure on windows. Ask chatgpt or something!
 

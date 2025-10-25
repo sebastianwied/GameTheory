@@ -343,8 +343,8 @@ vector<vector<array<double,5>>> agentRuleSnapshot(const AgentGrid &agents) {
     return snap;
 }
 
-TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snaps, float evolutionRate, 
-    float evolutionChance, float mutationRate, float inversionPercentage, int inversionRound) {
+TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snaps, float evolutionRate, float evolutionChance, float mutationRate, float inversionPercentage, int inversionRound) 
+{
 
     int yLen = (int)agentGrid.size();
     int xLen = (int)agentGrid[0].size();
@@ -363,82 +363,120 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
         vector<vector<int>> playedTracker(yLen, vector<int>(xLen, 0));
         vector<vector<double>> scoreTracker(yLen, vector<double>(xLen, 0.0));
 
-        // BEFORE launching threads: create deterministic thread seeds and decide nThreads
-        int nThreads = std::min(static_cast<int>(std::thread::hardware_concurrency()), (int) yLen);
+        // KEY CHANGE: Instead of parallelizing by grid rows, we now parallelize by individual games within each round. This is more efficient because:
+        // 1. Games within a round are completely independent of each other
+        // 2. Better load balancing across threads
+        // 3. More granular parallelization that scales with available cores
+        //
+        // PREVIOUS APPROACH: Divide grid rows among threads
+        // NEW APPROACH: Divide individual games among threads
+        
+        // STEP 1: Create a list of all games to be played in this round
+        // Each game is identified by (row, col) coordinates of the first player
+        vector<pair<int,int>> allGames;
+        for (int idy = 0; idy < yLen; ++idy) {
+            for (int idx = 0; idx < xLen; ++idx) {
+                allGames.push_back({idy, idx});
+            }
+        }
+        
+        // STEP 2: Determine optimal number of threads
+        // Use the minimum of available CPU cores and total number of games
+        // This ensures we don't create more threads than games to process
+        int nThreads = std::min(static_cast<int>(std::thread::hardware_concurrency()), (int) allGames.size());
         if (nThreads < 1) nThreads = 1;
 
-        // Create thread seeds deterministically using global_rng (seeded in main)
+        // STEP 3: Create deterministic thread seeds for reproducible results
+        // Each thread gets its own RNG seed derived from the global RNG
+        // This ensures deterministic behavior while allowing independent random generation
         vector<uint64_t> thread_seeds(nThreads);
         for (int t = 0; t < nThreads; ++t) {
             thread_seeds[t] = global_rng(); // deterministic sequence
         }
 
-        // Prepare per-thread accumulators
-        vector<vector<vector<double>>> scoreTracker_threads(nThreads,
-            vector<vector<double>>(yLen, vector<double>(xLen, 0.0)));
-        vector<vector<vector<int>>> playedTracker_threads(nThreads,
-            vector<vector<int>>(yLen, vector<int>(xLen, 0)));
+        // STEP 4: Prepare per-thread accumulators to avoid race conditions
+        // Each thread maintains its own local score and play count trackers
+        // These will be merged later to produce the final results
+        vector<vector<vector<double>>> scoreTracker_threads(nThreads, vector<vector<double>>(yLen, vector<double>(xLen, 0.0)));
+        vector<vector<vector<int>>> playedTracker_threads(nThreads, vector<vector<int>>(yLen, vector<int>(xLen, 0)));
 
-        // Worker now receives thread id and seed; uses its own local RNG
-        auto worker = [&](int t_id, int startRow, int endRow) {
+        // STEP 5: Define the worker function that processes individual games
+        // Each thread will process a subset of games independently
+        auto gameWorker = [&](int t_id, int startGame, int endGame) {
+            // Each thread has its own RNG to avoid contention
             std::mt19937_64 local_rng(thread_seeds[t_id]);
             std::uniform_real_distribution<double> unif(0.0, 1.0);
 
             auto local_uniform01 = [&](){ return unif(local_rng); };
 
-            // local references to thread-local accumulators
+            // Get references to this thread's local accumulators
             auto &scoreTracker_local = scoreTracker_threads[t_id];
             auto &playedTracker_local = playedTracker_threads[t_id];
 
-            for (int idy = startRow; idy < endRow; ++idy) {
-                for (int idx = 0; idx < xLen; ++idx) {
-                    auto match = matchups[idy][idx];
-                    auto a1 = agentGrid[idy][idx];
-                    auto a2 = agentGrid[match.second][match.first];
+            // Process each assigned game independently
+            for (int gameIdx = startGame; gameIdx < endGame; ++gameIdx) {
+                // Get the coordinates of the first player in this game
+                int idy = allGames[gameIdx].first;
+                int idx = allGames[gameIdx].second;
+                
+                // Find the opponent for this game
+                auto match = matchups[idy][idx];
+                auto a1 = agentGrid[idy][idx];
+                auto a2 = agentGrid[match.second][match.first];
 
-                    // increment played count for both players in THREAD-LOCAL arrays
-                    playedTracker_local[idy][idx] += 1;
-                    playedTracker_local[match.second][match.first] += 1;
+                // Track that both players participated in a game
+                // (Note: This may count some players twice if they appear in multiple games)
+                playedTracker_local[idy][idx] += 1;
+                playedTracker_local[match.second][match.first] += 1;
 
-                    // generate seeds for iterated plays using local_rng
-                    vector<double> seeds(2 * iters);
-                    for (int s = 0; s < 2*iters; ++s) seeds[s] = local_uniform01();
+                // Generate random seeds for the iterated game using thread-local RNG
+                vector<double> seeds(2 * iters);
+                for (int s = 0; s < 2*iters; ++s) seeds[s] = local_uniform01();
 
-                    for (int n = 0; n < iters; ++n) {
-                        unsigned long long a1prev = a1->prevMove;
-                        unsigned long long a2prev = a2->prevMove;
-                        int a1move = a1->playMove(a2prev, seeds[n], n);
-                        int a2move = a2->playMove(a1prev, seeds[n+iters], n);
-                        // accumulate into thread-local arrays
-                        scoreTracker_local[idy][idx] += payoffMatrix[a1move][a2move];
-                        scoreTracker_local[match.second][match.first] += payoffMatrix[a2move][a1move];
-                    }
-                    a1->reset();
-                    a2->reset();
+                // Play the iterated game between the two agents
+                for (int n = 0; n < iters; ++n) {
+                    unsigned long long a1prev = a1->prevMove;
+                    unsigned long long a2prev = a2->prevMove;
+                    int a1move = a1->playMove(a2prev, seeds[n], n);
+                    int a2move = a2->playMove(a1prev, seeds[n+iters], n);
+                    // Accumulate scores into thread-local arrays (no race conditions)
+                    scoreTracker_local[idy][idx] += payoffMatrix[a1move][a2move];
+                    scoreTracker_local[match.second][match.first] += payoffMatrix[a2move][a1move];
                 }
+                // Reset agents for next round
+                a1->reset();
+                a2->reset();
             }
         };
 
-
-        int rowsPerThread = std::max(1, ( (int) yLen) / nThreads);
-        int row = 0;
+        // STEP 6: Distribute games among threads for balanced workload
+        // Calculate how many games each thread should process
+        int gamesPerThread = std::max(1, (int)allGames.size() / nThreads);
+        int gameIdx = 0;
         vector<thread> threads;
+        
+        // Launch threads, each processing a different subset of games
         for (int t = 0; t < nThreads; ++t) {
-            int startR = row;
-            int endR = std::min((int) yLen, row + rowsPerThread);
-            if (t == nThreads - 1) endR = yLen;
-            threads.emplace_back(worker, t, startR, endR);
-            row = endR;
+            int startGame = gameIdx;
+            int endGame = std::min((int)allGames.size(), gameIdx + gamesPerThread);
+            // Last thread gets any remaining games to ensure all games are processed
+            if (t == nThreads - 1) endGame = allGames.size();
+            threads.emplace_back(gameWorker, t, startGame, endGame);
+            gameIdx = endGame;
         }
+        
+        // STEP 7: Wait for all threads to complete their games
         for (auto &th : threads) if (th.joinable()) th.join();
         threads.clear();
 
-        // zero out global trackers then sum thread-local results deterministically
+        // STEP 8: Merge thread-local results into global results
+        // This is done sequentially to avoid race conditions
         for (int i=0;i<yLen;++i) for (int j=0;j<xLen;++j) {
             playedTracker[i][j] = 0;
             scoreTracker[i][j] = 0.0;
         }
 
+        // Sum up all thread-local results
         for (int t=0; t<nThreads; ++t) {
             for (int i=0;i<yLen;++i) {
                 for (int j=0;j<xLen;++j) {

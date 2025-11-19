@@ -102,7 +102,7 @@ class Experiment:
                 self.varySeed = bool(value)
             case "size":
                 self.size = (float(value[0]), float(value[1]))
-            case "amp":
+            case "amplitude":
                 self.amplitude = float(value)
             case "sigmas":
                 self.sigmas = (float(value[0]), float(value[1]))
@@ -112,13 +112,9 @@ class Experiment:
                 self.norm = bool(value)
 
     def run(self):
-        self.saveParams()
         for repeat in range(self.repeats):
             subPath = self.logPath / Path(f"repeat{repeat}")
             subPath.mkdir(parents=True, exist_ok=False)
-            if self.varySeed:
-                self.gridSeed = int(random.rand()*10000)
-                self.playSeed = int(random.rand()*10000)
             try: 
                 subprocess.run(
                 [self.execPath, str(self.payoffMatrix[0][0]), str(self.payoffMatrix[0][1]),
@@ -134,9 +130,13 @@ class Experiment:
                 )
             except subprocess.CalledProcessError:
                 pass
+            self.saveParams(subPath)
+            if self.varySeed:
+                self.gridSeed = int(random.rand()*10000)
+                self.playSeed = int(random.rand()*10000)
     
-    def saveParams(self):
-        with open(str(self.logPath/Path("params.csv")), "w") as f:
+    def saveParams(self, path):
+        with open(str(path/Path("params.csv")), "w") as f:
             writer = csv.writer(f)
             writer.writerow(["p00", "p01","p10","p11","gridN","res0","res1", "shapeX", "shapeY", "amplitude", "truncation", "maxN", "rounds", "iters", "snaps", "evolutionRate", "evolutionChance", "mutationRate", "seed1", "seed2"])
             writer.writerow([
@@ -241,15 +241,15 @@ def fromExperiments(exps):
 def fromPaths(paths):
     for exp in paths:
         dirs = [p for p in exp.iterdir() if p.is_dir()]
-        df = pd.read_csv(str(exp / Path("params.csv")))
-        params = df.iloc[0].to_dict()
-        print(params)
-        snaps = int(params["snaps"])
-        N = int(params["gridN"])
-        maxN = int(params["maxN"])
-        rounds = int(params["rounds"])
-        matrix = [[float(params["p00"]),float(params["p01"])],[float(params["p10"]),float(params["p11"])]]
         for dir in dirs:
+            df = pd.read_csv(str( dir / Path("params.csv")))
+            params = df.iloc[0].to_dict()
+            print(params)
+            snaps = int(params["snaps"])
+            N = int(params["gridN"])
+            maxN = int(params["maxN"])
+            rounds = int(params["rounds"])
+            matrix = [[float(params["p00"]),float(params["p01"])],[float(params["p10"]),float(params["p11"])]]
             # Extract data
             scoreSnaps = load_csv(str(dir/Path("nonCumulativeScore.csv")))
             totalScore = load_csv(str(dir/Path("totalScore.csv")))
@@ -257,7 +257,7 @@ def fromPaths(paths):
             ruleSnaps = ruleSnaps.reshape(snaps, N, N, 5)
             scoreSnaps = scoreSnaps.reshape(snaps, N, N)
             # Plot
-            displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix)
+            displayAsImage(scoreSnaps, totalScore, ruleSnaps, params)
             #heightmaps(scoreSnaps, totalScore, ruleSnaps, params["iters"])
             #stateSpace4d(ruleSnaps)
 
@@ -284,16 +284,15 @@ def superPlot(tracker="experiments.txt"):
 
 
 builder = ExperimentBuilder("./sim")
-paramdict = {"repeats": 3, "rounds": 10000, "snaps": 100, "gridN": 64, "varySeed": True, 
+paramdict = {"repeats": 1, "rounds": 20000, "snaps": 100, "gridN": 64, "varySeed": True, 
             "payoffMatrix": [[1,5],[0,3]],
             "mutationRate": 0.005, "res": (2,2), "evolutionChance": 0.5, 
             "evolutionRate":0.5,
-            "size":(8,8), "amplitude": 0.5, "truncate": 2, "sigmas":(2,2), "norm": False}
+            "size":(8,8), "amplitude": 0.5, "truncate": 2, "sigmas":(2,2), "norm": False,
+            "gridSeed": 416, "playSeed": 1764}
 #exp = builder.fromParamDict(paramdict)
 #builder.resRange((1,1), (16,16), paramdict)
-#builder.fromParamDict(paramdict)
-#builder.runAll()
-#builder.experimentList()
-#fromTracker()
-#superPlot()
+builder.fromParamDict(paramdict)
+builder.runAll()
+builder.experimentList()
 fromTracker()

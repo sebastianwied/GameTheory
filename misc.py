@@ -17,7 +17,7 @@ def gaussian3D(xSig, ySig, amp, width, height, gridN, truncate=100, norm=False):
     if norm: grid /= np.nanmax(grid)
     return xR, yR, grid
 
-xR, yR, grid = gaussian3D(1,1,8,16,16,128, truncate = 2, norm=True)
+xR, yR, grid = gaussian3D(1,1,.1,16,16,128, truncate = 2, norm=False)
 X, Y = np.meshgrid(xR, yR)
 # fig = plt.figure()
 # ax = fig.add_subplot(111, projection='3d')

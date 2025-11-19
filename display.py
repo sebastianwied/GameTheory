@@ -10,11 +10,13 @@ def load_csv(filename):
     data = np.loadtxt(filename, delimiter=',')
     return data
 
-def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
+def displayAsImage(scoreSnaps, totalScore, ruleSnaps, params):
     fig1, ((ax1,ax2,fax1,fax2)
     ,(ax3,ax4,fax3,fax4)
     ,(ax5,ax6,fax5,fax6)
     ,(ax7,ax8,ax9,ax10)) = plt.subplots(4,4,figsize=(16,8))
+    
+    matrix = [[float(params["p00"]),float(params["p01"])],[float(params["p10"]),float(params["p11"])]]
 
     mspf = 120 # ms per frame
     im = ax1.imshow(scoreSnaps[0], cmap="viridis", vmin=0, vmax=np.nanmax(scoreSnaps[-1]))
@@ -35,7 +37,7 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     ruleR4s = ruleSnaps[:,:,:,3]
     # N = 1:
     # R1 = DD, R2 = DC, R3 = CD, R4 = CC
-    fig1.suptitle(f"Rule structure: Their move, My move (both from previous round). Color: Bluer => more likely to defect, Yellower => more likely to cooperate\nPayoff Matrix: \n{matrix}")
+    fig1.suptitle(f"Rule structure: Their move, My move (both from previous round). Color: Bluer => more likely to defect, Yellower => more likely to cooperate\nPayoff Matrix: \n{matrix}. Grid Seed: {params['seed1']}. Play seed: Grid Seed: {params['seed2']}")
     im1 = ax3.imshow(ruleR1s[0], cmap="viridis", vmin=0, vmax=1)
     plt.colorbar(im1, ax=ax3)
     ani1 = anim.FuncAnimation(fig=fig1, func=lambda frame: im1.set_data(ruleR1s[frame]), frames=len(scoreSnaps), interval=mspf)
@@ -50,7 +52,8 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     plt.colorbar(im3, ax=ax5)
     ani3 = anim.FuncAnimation(fig=fig1, func=lambda frame: im3.set_data(ruleR3s[frame]), frames=len(scoreSnaps), interval=mspf)
     ax5.set_title("R3(CD) evolution")
-
+    
+    print(np.nanmax(ruleR4s[0]))
     im4 = ax6.imshow(ruleR4s[0], cmap="viridis", vmin=0, vmax=1)
     plt.colorbar(im4, ax=ax6)
     ani4 = anim.FuncAnimation(fig=fig1, func=lambda frame: im4.set_data(ruleR4s[frame]), frames=len(scoreSnaps), interval=mspf)

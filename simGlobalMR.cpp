@@ -743,7 +743,7 @@ int main(int argc, char** argv) {
     pair<double, double> sigmas = {atoi(argv[10]),atoi(argv[11])};
     double amp = atoi(argv[12]);
     double truncation = atoi(argv[13]);
-    bool norm = atoi(argv[14]);
+    bool norm = false;//atoi(argv[14]);
     int maxN = atoi(argv[15]);
     int rounds = atoi(argv[16]);
     int iters = atoi(argv[17]);

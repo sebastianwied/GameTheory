@@ -1,7 +1,6 @@
 // sim.cpp
 // Single-file C++ port of the Python code you supplied.
 // Compile: g++ -O3 -std=c++17 sim.cpp -o sim -pthread
-// Run: ./sim
 //
 // Outputs CSV files:
 //  - scoreSnaps.csv (snapshots of cumulative score at snapshot times)
@@ -32,8 +31,8 @@
 using namespace std;
 
 /* ---------------------------
-   Utility / random helpers
-   --------------------------- */
+Utility / random helpers
+--------------------------- */
 
 using u64 = unsigned long long;
 std::mt19937_64 grid_rng;
@@ -48,9 +47,9 @@ int randint(int a, int b) { // inclusive [a,b]
 }
 
 /* ---------------------------
-   Perlin / Fractal noise
-   Ported from your perlin_numpy implementation
-   --------------------------- */
+Perlin / Fractal noise
+Ported from your perlin_numpy implementation
+--------------------------- */
 
 static inline double interpolant(double t) {
     // t * t * t * (t * (t * 6 - 15) + 10)
@@ -161,9 +160,65 @@ Noise3D generate_fractal_noise_2d(pair<int,int> shape, pair<int,int> res, int oc
     return noise;
 }
 
+Noise3D generate_gaussian_param(
+    pair<int,int> shape,          // (H, W)
+    pair<double,double> size,     // (width, height)
+    double xSig, double ySig,
+    double amp,
+    double truncation,
+    bool norm
+) {
+    int H = shape.first;
+    int W = shape.second;
+    double width  = size.first;
+    double height = size.second;
+
+    Noise3D data(1, vector<vector<double>>(H, vector<double>(W, 0.0)));
+
+    // ranges matching Python:
+    // xR = linspace(-width/2, width/2, W)
+    // yR = linspace(-height/2, height/2, H)
+    vector<double> xR(W), yR(H);
+    for (int i=0; i<W; ++i)
+        xR[i] = -width/2.0 + (width * i) / (W - 1);
+
+    for (int j=0; j<H; ++j)
+        yR[j] = -height/2.0 + (height * j) / (H - 1);
+
+    auto value = [&](double x, double y){
+        double xs = (x * x) / (2.0 * xSig * xSig);
+        double ys = (y * y) / (2.0 * ySig * ySig);
+        return amp * std::exp(-(xs + ys));
+    };
+
+    // Fill Gaussian grid
+    double maxVal = -1e9;
+    for (int j=0; j<H; ++j) {
+        for (int i=0; i<W; ++i) {
+
+            // match Python’s y indexing: grid[idy, idx] = value(xR[idx], yR[-(idy+1)])
+            double val = value(xR[i], yR[H - 1 - j]);
+            val = std::min(val, truncation);
+
+            data[0][j][i] = val;
+            maxVal = std::max(maxVal, val);
+        }
+    }
+
+    // normalize if requested
+    if (norm && maxVal > 0) {
+        for (int j=0; j<H; ++j)
+            for (int i=0; i<W; ++i)
+                data[0][j][i] /= maxVal;
+    }
+
+    return data;
+}
+
+
 /* ---------------------------
-   MemoryN classes (agents)
-   --------------------------- */
+MemoryN classes (agents)
+--------------------------- */
 
 enum Move: int {
     COOP = 1,
@@ -245,7 +300,10 @@ Grid generation
 using AgentGrid = vector<vector<shared_ptr<Memory1>>>;
 
 // blankGrid(N, res, maxN=1, seed)
-AgentGrid blankGrid(int N, pair<int,int> res, unsigned seed = 0, double mutationRate=0.0) {
+AgentGrid blankGrid(int N, pair<int,int> res, pair<double, double> size, double amp, bool norm,
+    pair<double, double> sigmas, double truncation, 
+    unsigned seed = 0, double mutationRate=0.0) 
+    {
     if (seed==0) seed = (unsigned) (uniform01() * 1000.0);
     cout << "seed: " << seed << "\n";
     constexpr int number = 5; // 4 rules, 1 mutation rate
@@ -264,6 +322,14 @@ AgentGrid blankGrid(int N, pair<int,int> res, unsigned seed = 0, double mutation
         paramMaps[k][i][j] += 1;
         paramMaps[k][i][j] /= 2.0;
     }
+    auto gaussian_param = generate_gaussian_param(
+        {N, N},
+        {size.first, size.second},   // same size as Python example
+        sigmas.first, sigmas.second,     // sigmas
+        amp,          // amplitude
+        truncation,          // truncation
+        norm          // normalize
+    );
     AgentGrid grid(N, vector<shared_ptr<Memory1>>(N));
     for (int i=0;i<N;++i) for (int j=0;j<N;++j) {
         auto ag = make_shared<BLANK>(COOP);
@@ -277,12 +343,13 @@ AgentGrid blankGrid(int N, pair<int,int> res, unsigned seed = 0, double mutation
         for (int k=0;k<number-1;++k) {
             double v = paramMaps[k][i][j];
             ruleVals[k] = v;
+            if (k == 3) ruleVals[k] = gaussian_param[0][i][j];
             // clamp [0,1]
             if (ruleVals[k] < 0.0) ruleVals[k] = 0.0;
             if (ruleVals[k] > 1.0) ruleVals[k] = 1.0;
         }
         ag->setRule(ruleVals);
-        ag->mutationRate = mutationRate;//paramMaps[4][i][j];
+        ag->mutationRate = mutationRate;//Keeping a fixed mutation rate for now;
         grid[i][j] = ag;
     }
     return grid;
@@ -366,7 +433,7 @@ vector<vector<array<double,5>>> agentRuleSnapshot(const AgentGrid &agents) {
 }
 
 TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snaps, float evolutionRate, 
-    float evolutionChance, float mutationRate, float inversionPercentage, int inversionRound) {
+    float evolutionChance, float mutationRate) {
 
     int yLen = (int)agentGrid.size();
     int xLen = (int)agentGrid[0].size();
@@ -377,9 +444,6 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
     vector<vector<double>> paddedScore(yLen+2, vector<double>(xLen+2, 0.0));
 
     for (int round=0; round<rounds; ++round) {
-        if (round == inversionRound) {
-            //invertCentralBlock(agentGrid, inversionPercentage);
-        }
         // PLAY MATCHES
         auto matchups = pickOpponents(agentGrid);
         vector<vector<int>> playedTracker(yLen, vector<int>(xLen, 0));
@@ -478,7 +542,7 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
 
         // Evolution
         AgentGrid newGrid = agentGrid; // shallow copy of shared_ptrs
-        double shiftPercentage = 0.2;
+        double shiftPercentage = evolutionRate;
         double mutationRate = 0.01;
         // build padded score toroidally
         for (int i=0;i<yLen;++i) for (int j=0;j<xLen;++j) paddedScore[i+1][j+1] = scoreTracker[i][j];
@@ -580,6 +644,7 @@ Output helpers (CSV)
 --------------------------- */
 
 void write_scoreSnaps_csv(const vector<vector<vector<double>>> &scoreSnaps, const string &fname) {
+    std::cout << "Writing scoreSnaps to: " << fname << std::endl;
     ofstream f(fname);
     // write each snap as flattened row; comment header
     for (size_t s=0; s<scoreSnaps.size(); ++s) {
@@ -598,6 +663,7 @@ void write_scoreSnaps_csv(const vector<vector<vector<double>>> &scoreSnaps, cons
 }
 
 void write_totalScore_csv(const vector<vector<double>> &totalScore, const string &fname) {
+    std::cout << "Writing totalScore to: " << fname << std::endl;
     ofstream f(fname);
     int H = totalScore.size(), W = totalScore[0].size();
     for (int i=0;i<H;++i) {
@@ -612,6 +678,7 @@ void write_totalScore_csv(const vector<vector<double>> &totalScore, const string
 
 
 void write_ruleSnaps_csv(const vector<vector<vector<double>>> &ruleSnaps, const string &fname) {
+    std::cout << "Writing ruleSnapss to: " << fname << std::endl;
     ofstream f(fname);
     // Each line: snap_index,y,x,ruleIndex,ruleValue   (sparse long form)
     int snaps = ruleSnaps.size();
@@ -637,6 +704,7 @@ void write_ruleSnaps_csv(const vector<vector<vector<double>>> &ruleSnaps, const 
 }
 
 void write_nonCumulative_csv(const vector<vector<vector<double>>> &ncs, const string &fname) {
+    std::cout << "Writing nonCumulativeScore to: " << fname << std::endl;
     ofstream f(fname);
     for (size_t s=0;s<ncs.size();++s) {
         auto &grid = ncs[s];
@@ -657,8 +725,10 @@ main (testing)
 --------------------------- */
 
 int main(int argc, char** argv) {
-    if (argc < 6) {
-        cerr << "Usage: ./sim p00 p01 p10 p11 gridN res0 res1 maxN rounds iters snaps evolutionRate mutationRate evolutionChance seed\n";
+    if (argc < 20) {
+        cerr << "Usage: ./sim p00 p01 p10 p11 gridN res0 res1 sizeX sizeY "
+                "maxN rounds iters snaps evolutionRate mutationRate "
+                "evolutionChance gridSeed playSeed path\n";
         return 1;
     }
 
@@ -669,27 +739,32 @@ int main(int argc, char** argv) {
 
     int gridN = atoi(argv[5]);
     pair<int,int> res = {atoi(argv[6]),atoi(argv[7])};
-    int maxN = atoi(argv[8]);
-    int rounds = atoi(argv[9]);
-    int iters = atoi(argv[10]);
-    int snaps = atoi(argv[11]);
-    double evolutionRate = atof(argv[12]);
-    double mutationRate = atof(argv[13]);
-    double evolutionChance = atof(argv[14]);
-    unsigned int gridSeed = (unsigned) std::atoi(argv[15]);
-    unsigned int playSeed = (unsigned) std::atoi(argv[16]);
+    pair<double, double> size = {atoi(argv[8]),atoi(argv[9])};
+    pair<double, double> sigmas = {atoi(argv[10]),atoi(argv[11])};
+    double amp = atoi(argv[12]);
+    double truncation = atoi(argv[13]);
+    bool norm = atoi(argv[14]);
+    int maxN = atoi(argv[15]);
+    int rounds = atoi(argv[16]);
+    int iters = atoi(argv[17]);
+    int snaps = atoi(argv[18]);
+    double evolutionRate = atof(argv[19]);
+    double mutationRate = atof(argv[20]);
+    double evolutionChance = atof(argv[21]);
+    unsigned int gridSeed = (unsigned) std::atoi(argv[22]);
+    unsigned int playSeed = (unsigned) std::atoi(argv[23]);
     global_rng.seed(playSeed);
     grid_rng.seed(gridSeed);
-    double inversionPercentage = atof(argv[17]);//0;
-    int inversionRound = atoi(argv[18]);//1;
 
-    std::string path = argv[17];
+    std::string path = argv[24];
+
+    cout << path;
 
     cout << "Building grid...\n";
-    AgentGrid grid = blankGrid(gridN, res, gridSeed, mutationRate);
+    AgentGrid grid = blankGrid(gridN, res, size, amp, norm, sigmas, truncation, gridSeed, mutationRate);
 
     cout << "Running tournament (" << rounds << " rounds, " << iters << " iters per match)...\n";
-    TorusResult resu = torusTournament(grid, iters, rounds, snaps, evolutionRate, mutationRate, evolutionChance, inversionPercentage, inversionRound);
+    TorusResult resu = torusTournament(grid, iters, rounds, snaps, evolutionRate, mutationRate, evolutionChance);
 
     write_scoreSnaps_csv(resu.scoreSnaps, path+"/scoreSnaps.csv");
     write_totalScore_csv(resu.totalScore, path+"/totalScore.csv");

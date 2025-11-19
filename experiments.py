@@ -9,7 +9,7 @@ import csv
 from display import displayAsImage, heightmaps, stateSpace4d
 
 # compile with g++ -O3 -std=c++17 sim.cpp -o sim -pthread
-#####################
+######################################################
 ######### Handle data directory creation #############
 ######################################################
 DATA_PATH = Path("./Data")
@@ -52,8 +52,11 @@ class Experiment:
         self.gridSeed = int(random.rand()*10000)
         self.playSeed = int(random.rand()*10000)
         self.varySeed = False
-        self.inversionPercentage = 0
-        self.inversionRound = self.rounds // 2
+        self.size = (8,8)
+        self.amplitude = 1
+        self.sigmas = (1,1)
+        self.truncation = 100
+        self.norm = True
         
         ### Experiment execution
         self.execPath = execPath
@@ -97,10 +100,16 @@ class Experiment:
                 self.playSeed = int(value)
             case "varySeed":
                 self.varySeed = bool(value)
-            case "inversionPercentage":
-                self.inversionPercentage = float(value)
-            case "inversionRound":
-                self.inversionRound = int(value)
+            case "size":
+                self.size = (float(value[0]), float(value[1]))
+            case "amp":
+                self.amplitude = float(value)
+            case "sigmas":
+                self.sigmas = (float(value[0]), float(value[1]))
+            case "truncation":
+                self.truncation = float(value)
+            case "norm":
+                self.norm = bool(value)
 
     def run(self):
         self.saveParams()
@@ -108,13 +117,16 @@ class Experiment:
             subPath = self.logPath / Path(f"repeat{repeat}")
             subPath.mkdir(parents=True, exist_ok=False)
             if self.varySeed:
-                self.seed1 = int(random.rand()*10000)
-                self.seed2 = int(random.rand()*10000)
+                self.gridSeed = int(random.rand()*10000)
+                self.playSeed = int(random.rand()*10000)
             try: 
                 subprocess.run(
                 [self.execPath, str(self.payoffMatrix[0][0]), str(self.payoffMatrix[0][1]),
                 str(self.payoffMatrix[1][0]), str(self.payoffMatrix[1][1]),
                 str(self.gridN), str(self.res[0]), str(self.res[1]),
+                str(self.size[0]),str(self.size[1]),
+                str(self.sigmas[0]),str(self.sigmas[1]),
+                str(self.amplitude),str(self.truncation), str(self.norm),
                 str(self.maxN), str(self.rounds), str(self.iters),
                 str(self.snaps), str(self.evolutionRate), str(self.mutationRate), 
                 str(self.evolutionChance), str(self.gridSeed), str(self.playSeed),
@@ -126,12 +138,12 @@ class Experiment:
     def saveParams(self):
         with open(str(self.logPath/Path("params.csv")), "w") as f:
             writer = csv.writer(f)
-            writer.writerow(["p00", "p01","p10","p11","gridN","res0","res1","maxN", "rounds", "iters", "snaps", "evolutionRate", "evolutionChance", "mutationRate", "seed1", "seed2", "inversionPercentage", "inversionRound"])
+            writer.writerow(["p00", "p01","p10","p11","gridN","res0","res1", "shapeX", "shapeY", "amplitude", "truncation", "maxN", "rounds", "iters", "snaps", "evolutionRate", "evolutionChance", "mutationRate", "seed1", "seed2"])
             writer.writerow([
                 self.payoffMatrix[0][0],self.payoffMatrix[0][1],self.payoffMatrix[1][0],self.payoffMatrix[1][1],
-                self.gridN, self.res[0], self.res[1], self.maxN, self.rounds, self.iters, self.snaps,
-                self.evolutionRate, self.evolutionChance, self.mutationRate, self.gridSeed, self.playSeed,
-                self.inversionPercentage, self.inversionRound
+                self.gridN, self.res[0], self.res[1], self.size[0], self.size[1], 
+                self.amplitude, self.truncation, self.maxN, self.rounds, self.iters, self.snaps,
+                self.evolutionRate, self.evolutionChance, self.mutationRate, self.gridSeed, self.playSeed
                 ])
     
     def __repr__(self):
@@ -242,14 +254,12 @@ def fromPaths(paths):
             scoreSnaps = load_csv(str(dir/Path("nonCumulativeScore.csv")))
             totalScore = load_csv(str(dir/Path("totalScore.csv")))
             ruleSnaps = load_csv(str(dir/Path("ruleSnaps.csv")))
-            print(ruleSnaps.shape)
-            print(snaps, N, maxN)
             ruleSnaps = ruleSnaps.reshape(snaps, N, N, 5)
             scoreSnaps = scoreSnaps.reshape(snaps, N, N)
             # Plot
             displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix)
             #heightmaps(scoreSnaps, totalScore, ruleSnaps, params["iters"])
-            stateSpace4d(ruleSnaps)
+            #stateSpace4d(ruleSnaps)
 
 def superPlot(tracker="experiments.txt"):
     path = ""
@@ -270,18 +280,20 @@ def superPlot(tracker="experiments.txt"):
         ruleSnaps = ruleSnaps.reshape(snaps, N, N, 5)
         finalRules.append(ruleSnaps[-1])
     finalRules = np.array(finalRules)
-    print(finalRules.shape)
     stateSpace4d(np.array(finalRules))
 
 
 builder = ExperimentBuilder("./sim")
-paramdict = {"repeats": 1, "rounds": 10000, "snaps": 200, "gridN": 128, "varySeed": False, 
-                            "payoffMatrix": [[1,5],[0,3.3]], "inversionPercentage": 0.1,
-                            "mutationRate": 0.005, "res": (2,2)}
-exp = builder.fromParamDict(paramdict)
+paramdict = {"repeats": 3, "rounds": 10000, "snaps": 100, "gridN": 64, "varySeed": True, 
+            "payoffMatrix": [[1,5],[0,3]],
+            "mutationRate": 0.005, "res": (2,2), "evolutionChance": 0.5, 
+            "evolutionRate":0.5,
+            "size":(8,8), "amplitude": 0.5, "truncate": 2, "sigmas":(2,2), "norm": False}
+#exp = builder.fromParamDict(paramdict)
 #builder.resRange((1,1), (16,16), paramdict)
 #builder.fromParamDict(paramdict)
-builder.runAll()
-builder.experimentList()
-fromTracker()
+#builder.runAll()
+#builder.experimentList()
+#fromTracker()
 #superPlot()
+fromTracker()

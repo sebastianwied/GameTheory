@@ -33,7 +33,6 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     ruleR2s = ruleSnaps[:,:,:,1]
     ruleR3s = ruleSnaps[:,:,:,2]
     ruleR4s = ruleSnaps[:,:,:,3]
-    mutationRate = ruleSnaps[:,:,:,4]
     # N = 1:
     # R1 = DD, R2 = DC, R3 = CD, R4 = CC
     fig1.suptitle(f"Rule structure: Their move, My move (both from previous round). Color: Bluer => more likely to defect, Yellower => more likely to cooperate\nPayoff Matrix: \n{matrix}")
@@ -57,12 +56,16 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     ani4 = anim.FuncAnimation(fig=fig1, func=lambda frame: im4.set_data(ruleR4s[frame]), frames=len(scoreSnaps), interval=mspf)
     ax6.set_title("R4(CC) evolution")
     
-    im5 = fax1.imshow(mutationRate[0], cmap="viridis", vmin=0, vmax=np.nanmax(mutationRate[-1]))
-    plt.colorbar(im4, ax=fax1)
-    animr = anim.FuncAnimation(fig=fig1, func=lambda frame: im5.set_data(mutationRate[frame]), frames=len(scoreSnaps), interval=mspf)
-    fax1.set_title("Mutation rate evolution")
-    frm = fax2.imshow(mutationRate[-1], cmap="viridis", vmin=0, vmax=np.nanmax(mutationRate[-1]))
-    fax2.set_title("Mutation rate final")
+    # im5 = fax1.imshow(mutationRate[0], cmap="viridis", vmin=0, vmax=np.nanmax(mutationRate[-1]))
+    # plt.colorbar(im4, ax=fax1)
+    # animr = anim.FuncAnimation(fig=fig1, func=lambda frame: im5.set_data(mutationRate[frame]), frames=len(scoreSnaps), interval=mspf)
+    # fax1.set_title("Mutation rate evolution")
+    # frm = fax2.imshow(mutationRate[-1], cmap="viridis", vmin=0, vmax=np.nanmax(mutationRate[-1]))
+    # fax2.set_title("Mutation rate final")
+    scoreMeans = [np.mean(snap) for snap in scoreSnaps]
+    snapRange = list(range(len(scoreMeans)))
+    fax1.scatter(snapRange, scoreMeans)
+    fax1.set_title("average score vs round")
 
     fr1 = fax3.imshow(ruleR1s[-1], cmap="viridis", vmin=0, vmax=1)
     fax3.set_title("R1(DD) final")
@@ -92,7 +95,7 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, matrix):
     ax8.axis("off")
     ax9.axis("off")
     ax10.axis("off")
-    fax1.axis("off")
+    #fax1.axis("off")
     fax2.axis("off")
     fax3.axis("off")
     fax4.axis("off")

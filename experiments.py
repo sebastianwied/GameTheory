@@ -7,6 +7,8 @@ import os
 from datetime import datetime
 import csv
 from display import displayAsImage, heightmaps, stateSpace4d
+from Perlin_numpy import *
+import matplotlib.pyplot as plt
 
 # compile with g++ -O3 -std=c++17 sim.cpp -o sim -pthread
 ######################################################
@@ -35,11 +37,81 @@ def generateNewLogPath():
     return new_folder
 ######################################################
 
+################################################################################
+# Map Generation ###############################################################
+################################################################################
+
+PERLIN = 0
+GAUSSIAN = 1
+CONSTANT = 2
+
+class MapObject:
+    def __init__(self):
+        self.value = 0
+        self.seed = None
+        self.resolution = (0,0)
+        self.sigmas = (0,0)
+        self.span = (0,0,0,0) # (xMin, xMax, yMin, yMax)
+        self.amplitude = 0
+        self.truncation = 0
+        self.norm = False
+
+class GaussianMap(MapObject):
+    type = GAUSSIAN
+    def __init__(self, sigmas, span, amplitude, truncation, norm):
+        super().__init__()
+        self.sigmas = sigmas
+        self.span = span # (xMin, xMax, yMin, yMax)
+        self.amplitude = amplitude
+        self.truncation = truncation
+        self.norm = norm
+        self.seed = None
+    
+    def constructMap(self, gridN, gridSeed):  #gridSeed not used, only here for easier calling code later
+        xR = np.linspace(self.span[0], self.span[1], gridN)
+        yR = np.linspace(self.span[2], self.span[3], gridN)
+        #print(xR.shape, yR.shape)
+        def value(x, y):
+            return self.amplitude*np.exp((-x*x/(2*self.sigmas[0]*self.sigmas[0]))+(-y*y/(2*self.sigmas[1]*self.sigmas[1])))
+        grid = np.zeros((gridN, gridN))
+        for idx in range(gridN):
+            for idy in range(gridN):
+                #print(idx, idy)
+                grid[idy, idx] = min(value(xR[idx], yR[-(idy+1)]), self.truncation)
+        if self.norm: grid /= np.nanmax(grid)
+        return grid
+
+class PerlinMap(MapObject):
+    type = PERLIN
+    def __init__(self, resolution, seed=None):
+        super().__init__()
+        self.resolution = resolution
+        self.seed = seed
+        
+    def constructMap(self, gridN, gridSeed):
+        map = generate_fractal_noise_2d((gridN, gridN), self.resolution, seed=gridSeed)
+        map += 1
+        map /= 2
+        return map
+
+class ConstantMap(MapObject):
+    type = CONSTANT
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+        self.seed = None
+    
+    def constructMap(self, gridN, gridSeed): #gridSeed not used, only here for easier calling code later
+        return np.ones((gridN, gridN)) * self.value
+
+################################################################################
+# Experiment functionality #####################################################
+################################################################################
+
 class Experiment:
     def __init__(self, execPath):
         ### Experiment parameters
         self.gridN = 32
-        self.res = (4,4)
         self.maxN = 1
         self.rounds = 10000
         self.iters = 60
@@ -48,15 +120,18 @@ class Experiment:
         self.evolutionChance = 0.2
         self.mutationRate = 0.001
         self.payoffMatrix = [[1,5],[0,3]]
-        self.repeats = 1 ## TODO! When repeats != 1, it will overwrite the data from previous repeats. Fix!
-        self.gridSeed = int(random.rand()*10000)
+        self.repeats = 1
         self.playSeed = int(random.rand()*10000)
+        self.gridSeed = int(random.rand()*10000)
         self.varySeed = False
-        self.size = (8,8)
-        self.amplitude = 1
-        self.sigmas = (1,1)
-        self.truncation = 100
-        self.norm = True
+        
+        ## Maps
+        self.defaultRes = (2,2)
+        self.mapRoots = [PerlinMap(self.defaultRes), # DD
+                    PerlinMap(self.defaultRes), # DC
+                    PerlinMap(self.defaultRes), # CD
+                    PerlinMap(self.defaultRes), # CC
+                    ConstantMap(self.mutationRate)] # Mutation Rate
         
         ### Experiment execution
         self.execPath = execPath
@@ -66,11 +141,6 @@ class Experiment:
         match name: 
             case "gridN":
                 self.gridN = int(value)
-            case "res":
-                if type(value) != list and len(value) != 2:
-                    print("bad resolution")
-                    return
-                self.res = value
             case "maxN":
                 self.maxN = int(value)
             case "iters":
@@ -83,8 +153,6 @@ class Experiment:
                 self.evolutionRate = float(value)
             case "evolutionChance":
                 self.evolutionChance = float(value)
-            case "mutationRate":
-                self.mutationRate = float(value)
             case "payoffMatrix":
                 print(type(value))
                 print(np.array(value).shape)
@@ -94,38 +162,70 @@ class Experiment:
                 self.payoffMatrix = value
             case "repeats":
                 self.repeats = int(value)
-            case "gridSeed":
-                self.gridSeed = int(value)
             case "playSeed":
                 self.playSeed = int(value)
             case "varySeed":
                 self.varySeed = bool(value)
-            case "size":
-                self.size = (float(value[0]), float(value[1]))
-            case "amplitude":
-                self.amplitude = float(value)
-            case "sigmas":
-                self.sigmas = (float(value[0]), float(value[1]))
-            case "truncation":
-                self.truncation = float(value)
-            case "norm":
-                self.norm = bool(value)
+            case "gridSeed":
+                self.gridSeed = int(value)
+            case "maps":
+                self.mapRoots = value
+
+    def constructMaps(self):
+        ## Generate map seeds
+        random.seed(self.gridSeed)
+        seeds = random.random(5)
+        ##
+        maps = self.mapRoots
+        if len(maps) != 5:
+            print("Wrong number of maps. Keeping default")
+            return
+        ## Generate maps
+        self.maps = np.empty((5,self.gridN, self.gridN))
+        self.mapTypes = []
+        self.mapSeeds = []
+        count = 0
+        for seed, map in zip(seeds,maps):
+            seed = int(seed*10000)
+            if map.seed == None:
+                # Does not contain predefined seed
+                self.maps[count,:,:] = map.constructMap(self.gridN, seed)
+                self.mapSeeds.append(seed)
+                self.mapTypes.append(map.type)
+            else:
+                # Contains predefined seed.
+                self.maps[count,:,:] = map.constructMap(self.gridN, map.seed)
+                self.mapTypes.append(map.type)
+                self.mapSeeds.append(map.seed)
+            self.mapTypes.append(map.type)
+            count += 1
+        ##
+
+    def writeMaps(self, path):
+        # Wrie to ruleMaps file. simulation reads this file and uses it as the map.
+        # Structure: gridN lines for each map, gridN many entries in that line.
+        with open(str(path / Path("maps.csv")), 'w') as f:
+            writer = csv.writer(f)
+            print(self.maps.shape)
+            for map in self.maps:
+                print(map.shape)
+                for row in map:
+                    writer.writerow(row)
+        pass
 
     def run(self):
         for repeat in range(self.repeats):
+            self.constructMaps()
             subPath = self.logPath / Path(f"repeat{repeat}")
             subPath.mkdir(parents=True, exist_ok=False)
+            self.writeMaps(subPath)
             try: 
                 subprocess.run(
                 [self.execPath, str(self.payoffMatrix[0][0]), str(self.payoffMatrix[0][1]),
                 str(self.payoffMatrix[1][0]), str(self.payoffMatrix[1][1]),
-                str(self.gridN), str(self.res[0]), str(self.res[1]),
-                str(self.size[0]),str(self.size[1]),
-                str(self.sigmas[0]),str(self.sigmas[1]),
-                str(self.amplitude),str(self.truncation), str(self.norm),
-                str(self.maxN), str(self.rounds), str(self.iters),
-                str(self.snaps), str(self.evolutionRate), str(self.mutationRate), 
-                str(self.evolutionChance), str(self.gridSeed), str(self.playSeed),
+                str(self.gridN), str(self.rounds), str(self.iters),
+                str(self.snaps), str(self.evolutionRate),
+                str(self.evolutionChance), str(self.playSeed),
                 str(subPath)]
                 )
             except subprocess.CalledProcessError:
@@ -134,17 +234,25 @@ class Experiment:
             if self.varySeed:
                 self.gridSeed = int(random.rand()*10000)
                 self.playSeed = int(random.rand()*10000)
-    
+
     def saveParams(self, path):
         with open(str(path/Path("params.csv")), "w") as f:
             writer = csv.writer(f)
-            writer.writerow(["p00", "p01","p10","p11","gridN","res0","res1", "shapeX", "shapeY", "amplitude", "truncation", "maxN", "rounds", "iters", "snaps", "evolutionRate", "evolutionChance", "mutationRate", "seed1", "seed2"])
-            writer.writerow([
-                self.payoffMatrix[0][0],self.payoffMatrix[0][1],self.payoffMatrix[1][0],self.payoffMatrix[1][1],
-                self.gridN, self.res[0], self.res[1], self.size[0], self.size[1], 
-                self.amplitude, self.truncation, self.maxN, self.rounds, self.iters, self.snaps,
-                self.evolutionRate, self.evolutionChance, self.mutationRate, self.gridSeed, self.playSeed
-                ])
+            labels = ["p00", "p01", "p10", "p11", "gridN", "rounds", "iters", "snaps", "evolutionRate", "evolutionChance", "mutationRate", "gridSeed", "playSeed"]
+            entries = [
+            self.payoffMatrix[0][0],self.payoffMatrix[0][1],self.payoffMatrix[1][0],self.payoffMatrix[1][1], self.gridN, self.rounds, 
+            self.iters, self.snaps, self.evolutionRate, self.evolutionChance, self.mutationRate, self.gridSeed, self.playSeed]
+            writer.writerow(labels)
+            writer.writerow(entries)
+        # Write map info
+        pathNames = [Path("map00.csv"),Path("map01.csv"),Path("map10.csv"),Path("map11.csv")]
+        for mapPath, map, seed in zip(pathNames, self.mapRoots[:4], self.mapSeeds[:4]):
+            with open(str(path/mapPath), "w") as f:
+                writer = csv.writer(f)
+                labels = ["type", "seed", "res0", "res1", "value", "sigmaX", "sigmaY", "xMin", "xMax", "yMin", "yMax", "amplitude", "truncation", "norm"]
+                entries = [map.type, seed, map.resolution[0], map.resolution[1], map.value, map.sigmas[0], map.sigmas[1], map.span[0], map.span[1], map.span[2], map.span[3], map.amplitude, map.truncation, map.norm]
+                writer.writerow(labels)
+                writer.writerow(entries)
     
     def __repr__(self):
         return f"Payoff matrix: \n{self.payoffMatrix}, \nRounds: {self.rounds}, Iters: {self.iters}"
@@ -238,18 +346,26 @@ def fromExperiments(exps):
         paths.append(exp.logPath)
     fromPaths(paths)
 
+class ParamCarrier:
+    def __init__(self, path):
+        df = pd.read_csv(str(path/Path("params.csv")))
+        self.simParams = df.iloc[0].to_dict()
+        df = pd.read_csv(str(path/Path("map00.csv")))
+        self.m00 = df.iloc[0].to_dict()
+        df = pd.read_csv(str(path/Path("map01.csv")))
+        self.m01 = df.iloc[0].to_dict()
+        df = pd.read_csv(str(path/Path("map10.csv")))
+        self.m10 = df.iloc[0].to_dict()
+        df = pd.read_csv(str(path/Path("map11.csv")))
+        self.m11 = df.iloc[0].to_dict()
+
 def fromPaths(paths):
     for exp in paths:
         dirs = [p for p in exp.iterdir() if p.is_dir()]
         for dir in dirs:
-            df = pd.read_csv(str( dir / Path("params.csv")))
-            params = df.iloc[0].to_dict()
-            print(params)
-            snaps = int(params["snaps"])
-            N = int(params["gridN"])
-            maxN = int(params["maxN"])
-            rounds = int(params["rounds"])
-            matrix = [[float(params["p00"]),float(params["p01"])],[float(params["p10"]),float(params["p11"])]]
+            params = ParamCarrier(dir)
+            snaps = int(params.simParams["snaps"])
+            N = int(params.simParams["gridN"])
             # Extract data
             scoreSnaps = load_csv(str(dir/Path("nonCumulativeScore.csv")))
             totalScore = load_csv(str(dir/Path("totalScore.csv")))
@@ -284,14 +400,23 @@ def superPlot(tracker="experiments.txt"):
 
 
 builder = ExperimentBuilder("./sim")
-paramdict = {"repeats": 1, "rounds": 20000, "snaps": 100, "gridN": 64, "varySeed": True, 
-            "payoffMatrix": [[1,5],[0,3]],
-            "mutationRate": 0.005, "res": (2,2), "evolutionChance": 0.5, 
-            "evolutionRate":0.5,
-            "size":(8,8), "amplitude": 0.5, "truncate": 2, "sigmas":(2,2), "norm": False,
-            "gridSeed": 416, "playSeed": 1764}
-#exp = builder.fromParamDict(paramdict)
-#builder.resRange((1,1), (16,16), paramdict)
+res = (2,2)
+gridN = 64
+sigmas = (2,2)
+shape = (-4,4,-4,4)
+amplitude = 1
+gridSeed = int(random.rand()*10000)
+maps = np.array([
+    PerlinMap(res),
+    GaussianMap(sigmas, shape, amplitude, truncation = 2, norm=False),
+    PerlinMap(res),
+    PerlinMap(res),
+    ConstantMap(0.01)
+])
+paramdict = {"repeats": 1, "rounds": 2000, "snaps": 100, "varySeed": True, 
+            #"playSeed":7652, "gridSeed":4653,
+            "payoffMatrix": [[1,5],[0,3]],"evolutionChance": 0.5, 
+            "evolutionRate":0.3, "gridN":gridN, "maps":maps}
 builder.fromParamDict(paramdict)
 builder.runAll()
 builder.experimentList()

@@ -343,7 +343,7 @@ AgentGrid blankGrid(int N, pair<int,int> res, pair<double, double> size, double 
         for (int k=0;k<number-1;++k) {
             double v = paramMaps[k][i][j];
             ruleVals[k] = v;
-            if (k == 3) ruleVals[k] = gaussian_param[0][i][j];
+            if (k == 1) ruleVals[k] = gaussian_param[0][i][j];
             // clamp [0,1]
             if (ruleVals[k] < 0.0) ruleVals[k] = 0.0;
             if (ruleVals[k] > 1.0) ruleVals[k] = 1.0;
@@ -725,12 +725,6 @@ main (testing)
 --------------------------- */
 
 int main(int argc, char** argv) {
-    if (argc < 20) {
-        cerr << "Usage: ./sim p00 p01 p10 p11 gridN res0 res1 sizeX sizeY "
-                "maxN rounds iters snaps evolutionRate mutationRate "
-                "evolutionChance gridSeed playSeed path\n";
-        return 1;
-    }
 
     payoffMatrix = {
         {atof(argv[1]), atof(argv[2])},
@@ -741,9 +735,9 @@ int main(int argc, char** argv) {
     pair<int,int> res = {atoi(argv[6]),atoi(argv[7])};
     pair<double, double> size = {atoi(argv[8]),atoi(argv[9])};
     pair<double, double> sigmas = {atoi(argv[10]),atoi(argv[11])};
-    double amp = atoi(argv[12]);
+    double amp = atof(argv[12]);
     double truncation = atoi(argv[13]);
-    bool norm = false;//atoi(argv[14]);
+    bool norm = atoi(argv[14]);
     int maxN = atoi(argv[15]);
     int rounds = atoi(argv[16]);
     int iters = atoi(argv[17]);

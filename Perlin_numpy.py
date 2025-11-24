@@ -33,8 +33,7 @@ def generate_perlin_noise_2d(
     for n in range(number):
         delta = (res[0] / shape[0], res[1] / shape[1])
         d = (shape[0] // res[0], shape[1] // res[1])
-        grid = np.mgrid[0:res[0]:delta[0], 0:res[1]:delta[1]]\
-                 .transpose(1, 2, 0) % 1
+        grid = np.mgrid[0:res[0]:delta[0], 0:res[1]:delta[1]].transpose(1, 2, 0) % 1
         # Gradients
         angles = 2*np.pi*rng.random((res[0]+1, res[1]+1))
         gradients = np.dstack((np.cos(angles), np.sin(angles)))

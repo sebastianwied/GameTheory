@@ -16,7 +16,7 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, params):
     ,(ax5,ax6,fax5,fax6)
     ,(ax7,ax8,ax9,ax10)) = plt.subplots(4,4,figsize=(16,8))
     
-    matrix = [[float(params["p00"]),float(params["p01"])],[float(params["p10"]),float(params["p11"])]]
+    matrix = [[float(params.simParams["p00"]),float(params.simParams["p01"])],[float(params.simParams["p10"]),float(params.simParams["p11"])]]
 
     mspf = 120 # ms per frame
     im = ax1.imshow(scoreSnaps[0], cmap="viridis", vmin=0, vmax=np.nanmax(scoreSnaps[-1]))
@@ -37,27 +37,27 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, params):
     ruleR4s = ruleSnaps[:,:,:,3]
     # N = 1:
     # R1 = DD, R2 = DC, R3 = CD, R4 = CC
-    fig1.suptitle(f"Rule structure: Their move, My move (both from previous round). Color: Bluer => more likely to defect, Yellower => more likely to cooperate\nPayoff Matrix: \n{matrix}. Grid Seed: {params['seed1']}. Play seed: Grid Seed: {params['seed2']}")
+    fig1.suptitle(f"Rule structure: Their move, My move (both from previous round). Color: Bluer => more likely to defect, Yellower => more likely to cooperate\nPayoff Matrix: \n{matrix}. Play seed: {params.simParams['playSeed']}. Grid Seed: {params.simParams['gridSeed']}")
     im1 = ax3.imshow(ruleR1s[0], cmap="viridis", vmin=0, vmax=1)
     plt.colorbar(im1, ax=ax3)
     ani1 = anim.FuncAnimation(fig=fig1, func=lambda frame: im1.set_data(ruleR1s[frame]), frames=len(scoreSnaps), interval=mspf)
-    ax3.set_title("R1(DD) evolution")
+    ax3.set_title(f"R1(DD) evolution. Seed: {params.m00["seed"]}")
 
     im2 = ax4.imshow(ruleR2s[0], cmap="viridis", vmin=0, vmax=1)
     plt.colorbar(im2, ax=ax4)
     ani2 = anim.FuncAnimation(fig=fig1, func=lambda frame: im2.set_data(ruleR2s[frame]), frames=len(scoreSnaps), interval=mspf)
-    ax4.set_title("R2(DC) evolution")
+    ax4.set_title(f"R2(DC) evolution. Seed: {params.m01["seed"]}")
 
     im3 = ax5.imshow(ruleR3s[0], cmap="viridis", vmin=0, vmax=1)
     plt.colorbar(im3, ax=ax5)
     ani3 = anim.FuncAnimation(fig=fig1, func=lambda frame: im3.set_data(ruleR3s[frame]), frames=len(scoreSnaps), interval=mspf)
-    ax5.set_title("R3(CD) evolution")
+    ax5.set_title(f"R3(CD) evolution. Seed: {params.m10["seed"]}")
     
     print(np.nanmax(ruleR4s[0]))
     im4 = ax6.imshow(ruleR4s[0], cmap="viridis", vmin=0, vmax=1)
     plt.colorbar(im4, ax=ax6)
     ani4 = anim.FuncAnimation(fig=fig1, func=lambda frame: im4.set_data(ruleR4s[frame]), frames=len(scoreSnaps), interval=mspf)
-    ax6.set_title("R4(CC) evolution")
+    ax6.set_title(f"R4(CC) evolution. Seed: {params.m11["seed"]}")
     
     # im5 = fax1.imshow(mutationRate[0], cmap="viridis", vmin=0, vmax=np.nanmax(mutationRate[-1]))
     # plt.colorbar(im4, ax=fax1)
@@ -69,6 +69,16 @@ def displayAsImage(scoreSnaps, totalScore, ruleSnaps, params):
     snapRange = list(range(len(scoreMeans)))
     fax1.scatter(snapRange, scoreMeans)
     fax1.set_title("average score vs round")
+    
+    means = []
+    for rule in [ruleR1s, ruleR2s, ruleR3s, ruleR4s]:
+        mean = [np.mean(snap) for snap in rule]
+        means.append(mean)
+    fax2.plot(snapRange, means[0], label="DD", c='red')
+    fax2.plot(snapRange, means[1], label="DC", c='blue')
+    fax2.plot(snapRange, means[2], label="CD", c='green')
+    fax2.plot(snapRange, means[3], label="CC", c='black')
+    fax2.legend()
 
     fr1 = fax3.imshow(ruleR1s[-1], cmap="viridis", vmin=0, vmax=1)
     fax3.set_title("R1(DD) final")

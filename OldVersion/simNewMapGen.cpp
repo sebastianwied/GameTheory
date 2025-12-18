@@ -36,7 +36,6 @@ Utility / random helpers
 --------------------------- */
 
 using u64 = unsigned long long;
-std::mt19937_64 grid_rng;
 std::mt19937_64 global_rng;
 
 double uniform01() {
@@ -89,8 +88,16 @@ struct Memory1 {
         //     prevMove = startMove;
         //     return startMove;
         // } Omit in favor of doing this check when running the individual game, rather than at every call to playMove
-        int key = (prevMove << 1) | theirPrev;
-        double prob = rule[key];
+        double prob = 0;
+        if ((theirPrev == DEF) and (prevMove == DEF)) {
+            prob = rule[0];
+        } else if ((theirPrev == DEF) and (prevMove == COOP)) {
+            prob = rule[1];
+        } else if ((theirPrev == COOP) and (prevMove == DEF)) {
+            prob = rule[2];
+        } else if ((theirPrev == COOP) and (prevMove == COOP)) {
+            prob = rule[3];
+        }
         if (seed < prob) {
             prevMove = COOP;
             return COOP;
@@ -439,7 +446,7 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
 
                 // shift
                 vector<double> ruleShift(agentGrid[idy][idx]->rule.size(), 0.0);
-                if (evolveVec[count] < chance) {
+                if (evolveVec[count] < evolutionChance) {
                     auto &src = agentGrid[uy][ux]->rule;
                     auto &dst = agentGrid[idy][idx]->rule;
                     for (size_t k=0;k<dst.size();++k) ruleShift[k] = (src[k] - dst[k]) * shiftPercentage;
@@ -447,10 +454,10 @@ TorusResult torusTournament(AgentGrid agentGrid, int iters, int rounds, int snap
                 // mutate
                 vector<double> ruleShift2(agentGrid[idy][idx]->rule.size(), 0.0);
                 for (size_t k=0;k<ruleShift2.size();++k) {
-                    ruleShift2[k] = ((uniform01() * 2.0) - 1.0) * (agentGrid[idy][idx]->mutationRate);
+                    ruleShift[k] += ((uniform01() * 2.0) - 1.0) * (agentGrid[idy][idx]->mutationRate);
                 }
                 array<double,4> newRule = agentGrid[idy][idx]->rule;
-                for (size_t k=0;k<newRule.size();++k) newRule[k] = newRule[k] + ruleShift[k] + ruleShift2[k];
+                for (size_t k=0;k<newRule.size();++k) newRule[k] = newRule[k] + ruleShift[k];// + ruleShift2[k];
                 for (size_t k=0;k<newRule.size();++k) {
                     if (newRule[k] < 0.0) newRule[k] = 0.0;
                     if (newRule[k] > 1.0) newRule[k] = 1.0;

@@ -9,6 +9,8 @@
 */.ipynb_checkpoints/*
 
 Data/*
+mesa/*
+mesaPrisoners/*
 # IPython
 profile_default/
 ipython_config.py

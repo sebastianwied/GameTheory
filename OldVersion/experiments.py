@@ -411,7 +411,7 @@ def fromPaths(paths):
             scoreSnaps = load_csv(str(dir/Path("nonCumulativeScore.csv")))
             totalScore = load_csv(str(dir/Path("totalScore.csv")))
             ruleSnaps = load_csv(str(dir/Path("ruleSnaps.csv")))
-            ruleSnaps = ruleSnaps.reshape(snaps, N, N, 4)
+            ruleSnaps = ruleSnaps.reshape(snaps, N, N, 5)
             scoreSnaps = scoreSnaps.reshape(snaps, N, N)
             # Plot
             displayAsImage(scoreSnaps, totalScore, ruleSnaps, params)
@@ -434,7 +434,7 @@ def superPlot(tracker="experiments.txt"):
     for dir in dirs:
         # Extract data
         ruleSnaps = load_csv(str(dir/Path("ruleSnaps.csv")))
-        ruleSnaps = ruleSnaps.reshape(snaps, N, N, 4)
+        ruleSnaps = ruleSnaps.reshape(snaps, N, N, 5)
         finalRules.append(ruleSnaps[-1])
     finalRules = np.array(finalRules)
     stateSpace4d(np.array(finalRules))
@@ -449,7 +449,7 @@ gridSeed = int(random.rand()*10000)
 maps = np.array([
     PerlinMap(res, mean=0.4, precision=0.01),
     PerlinMap(res, mean=0.4, precision=0.01),
-    PerlinMap(res, mean=0.4, precision=0.01),#GaussianMap(sigmas, shape, amplitude, truncation = 2, norm=False),
+    GaussianMap(sigmas, shape, amplitude, truncation = 2, norm=False),
     PerlinMap(res, mean=0.3, precision=0.01),
     ConstantMap(0.01)
 ])

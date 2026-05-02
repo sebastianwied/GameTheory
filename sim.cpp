@@ -1,424 +1,248 @@
 #define NOMINMAX
 #include <fstream>
-#include <random>
-#include <cmath>
-#include <iostream>
-#include <algorithm>
+#include <sstream>
+#include <array>
 #include <vector>
 #include <string>
-#include <memory>
-#include <sstream>
-
-#include "network.hpp"
-#include "torusNetwork.hpp"
-#include "torusNetworkVonNeumann.hpp"
+#include <iostream>
+#include <algorithm>
+#include "splitmix.hpp"
 
 using namespace std;
 
-// RNG
-std::mt19937_64 global_rng;
-
-double uniform01() {
-    static std::uniform_real_distribution<double> dist(0.0, 1.0);
-    return dist(global_rng);
-}
-
-int randint(int a, int b) {
-    return a + (uniform01() * b);
-}
-
-enum Move: int {
-    COOP = 1,
-    DEF = 0
+enum Move : int {
+    DEF  = 0,
+    COOP = 1
 };
 
-struct Memory1 {
-    Move startMove;
-    Move prevMove;
-    array<double, 4> rule;
-    array<double, 4> ruleTemp;
-    double score = 0.0;
-    double mutationRate = 0.01;
+// Normalize rng output to [0, 1)
+inline double rand_double(splitmix64& rng) {
+    return (rng() >> 11) * (1.0 / (1ull << 53));
+}
 
-    Memory1(Move start = COOP, double mr=0.01):
-        startMove(start),
-        prevMove(startMove),
-        rule{0.0,0.0,0.0,0.0},
-        ruleTemp{0.0,0.0,0.0,0.0},
-        mutationRate(mr),
-        score(0.0)
-    {}
+struct Players {
+    vector<double> rules;
+    vector<double> firstMoveProb;
+    vector<Move>   prevMoves;
+    vector<double> scores;
 
-    virtual void startup(Move start) {
-        this->startMove = start;
-        this->prevMove = start;
-        this->score = 0.0;
+    array<double, 4> get_rule(int i) const {
+        return {rules[4*i], rules[4*i+1], rules[4*i+2], rules[4*i+3]};
     }
 
-    Move playMove(Move theirPrev, double seed, int roundNum) {
-        double prob = 0;
-        if ((theirPrev == DEF) and (prevMove == DEF)) {
-            prob = rule[0];
-        } else if ((theirPrev == DEF) and (prevMove == COOP)) {
-            prob = rule[1];
-        } else if ((theirPrev == COOP) and (prevMove == DEF)) {
-            prob = rule[2];
-        } else {
-            prob = rule[3];
-        }
-
-        if (seed < prob) {
-            prevMove = COOP;
-            return COOP;
-        } else {
-            prevMove = DEF;
-            return DEF;
-        }
+    void set_rule(int i, const array<double, 4>& rule) {
+        rules[4*i]   = rule[0];
+        rules[4*i+1] = rule[1];
+        rules[4*i+2] = rule[2];
+        rules[4*i+3] = rule[3];
     }
 
-    void addScore(int toAdd) {
-        score += toAdd;
+    double get_score(int i) const { return scores[i]; }
+    void add_score(int i, double add) { scores[i] += add; }
+    void set_score(int i, double score) { scores[i] = score; }
+    void scale_score(int i, double scale_factor) { scores[i] = scores[i] * scale_factor; }
+
+    Move get_prev_move(int i) const { return prevMoves[i]; }
+    void set_prev_move(int i, Move move) { prevMoves[i] = move; }
+
+    Move get_first_move(int i, splitmix64& rng) const {
+        return rand_double(rng) < firstMoveProb[i] ? COOP : DEF;
     }
 
-    void reset() {
-        score = 0.0;
-        prevMove = startMove;
-    }
+    void set_first_move(int i, double prob) { firstMoveProb[i] = prob; }
 
-    void setRule(const array<double, 4> &r) {
-        rule[0] = r[0];
-        rule[1] = r[1];
-        rule[2] = r[2];
-        rule[3] = r[3];
-        setRuleTemp(r);
-    }
-
-    void setRuleTemp(const array<double, 4> &r) {
-        ruleTemp[0] = r[0];
-        ruleTemp[1] = r[1];
-        ruleTemp[2] = r[2];
-        ruleTemp[3] = r[3];
+    // Rule index: (2 * their_prev) + my_prev
+    // [0]=DD, [1]=CD, [2]=DC, [3]=CC  (my prev, their prev)
+    Move get_move(int i, Move my_prev, Move their_prev, splitmix64& rng) {
+        double prob = get_rule(i)[(2 * their_prev) + my_prev];
+        return rand_double(rng) < prob ? COOP : DEF;
     }
 };
 
-vector<vector<vector<double>>>
-read_blocks_csv(const string &filename, int N) {
+struct Graph {
+    vector<int> neighbors;
+    vector<int> offsets;
+    int N;
 
-    vector<vector<vector<double>>> data(
-        5, vector<vector<double>>(N, vector<double>(N))
-    );
-
-    ifstream file(filename);
-    if (!file) {
-        throw runtime_error("Error opening file: " + filename);
+    int sample_neighbor(int i, splitmix64& rng) const {
+        int start = offsets[i];
+        int deg   = offsets[i+1] - start;
+        return neighbors[start + rng() % deg];
     }
 
-    std::string line;
-    int block = 0;
-    int row_in_block = 0;
-
-    while (getline(file, line)) {
-        // skip empty lines if they appear
-        if (line.size() == 0) continue;
-
-        std::stringstream ss(line);
-        std::string cell;
-        int col = 0;
-
-        while (getline(ss, cell, ',')) {
-            data[block][row_in_block][col] = stod(cell);
-            col++;
+    int best_neighbor(int i, const Players& players) const {
+        int start = offsets[i];
+        int end   = offsets[i+1];
+        int best  = i;
+        for (int k = start; k < end; ++k) {
+            if (players.get_score(neighbors[k]) > players.get_score(best))
+                best = neighbors[k];
         }
-
-        row_in_block++;
-
-        // move to next block if needed
-        if (row_in_block == N) {
-            block++;
-            row_in_block = 0;
-            if (block == 5) break; // done
-        }
+        return best;
     }
-
-    return data;
-}
-
-unique_ptr<TorusGridNetworkVonNeumann<Memory1>>
-importGrid(int N, const string& filename) {
-    auto net = make_unique<TorusGridNetworkVonNeumann<Memory1>>(N, N);
-    auto maps = read_blocks_csv(filename, N);
-
-    std::cout << "Shape: (" 
-        << maps.size() << ", "
-        << (maps.empty() ? 0 : maps[0].size()) << ", "
-        << (maps.empty() || maps[0].empty() ? 0 : maps[0][0].size()) << ")\n";
-
-    for (int y=0; y<N; ++y) for (int x=0; x<N; ++x) {
-        array<double,4> rule;
-        for (int k=0;k<4;++k) rule[k] = clamp(maps[k][y][x], 0.0, 1.0);
-        auto ag = make_shared<Memory1>(COOP, maps[4][y][x]);
-        ag->setRule(rule);
-        net->at(x,y) = ag;
-    }
-    return net;
-}
-
-vector<vector<pair<int,int>>> pickOpponents(const Network<Memory1>& net) {
-    int H = net.height();
-    int W = net.width();
-    vector<vector<pair<int,int>>> opponents(H, vector<pair<int,int>>(W));
-    for (int y=0;y<H;++y) for (int x=0;x<W;++x) {
-        auto neighbors = net.neighbors(x,y);
-        opponents[y][x] = neighbors[randint(0,neighbors.size()-1)];
-    }
-    return opponents;
-}
-
-vector<vector<double>> agentRuleSnapshot(const Network<Memory1> &net) {
-    int H = net.height();
-    int W = net.width();
-
-    vector<vector<double>> snap(H, vector<double>(4*W));
-    vector<double> row(4*W);
-    for (int y=0;y<H;++y) {
-        for (int x=0;x<W;++x) {
-            for (int k=0;k<4;++k) row[(4*x)+k] = net.at(x,y)->rule[k];
-        }
-        snap[y] = row;
-    }
-    return snap;
-}
-
-static vector<vector<double>> payoffMatrix = {{1,5},{0,3}};
-
-struct TournamentResultTorus {
-    vector<vector<vector<double>>> scoreSnaps;
-    vector<vector<vector<double>>> ruleSnaps;
-    vector<vector<vector<double>>> nonCumulativeScoreSnaps;
-    vector<vector<double>> totalScore;
 };
 
-TournamentResultTorus tournament(
-Network<Memory1> &net, 
-int iters, 
-int rounds,
-int snaps, 
-double evolutionRate,
-double evoChance) {
-    int H = net.height();
-    int W = net.width();
-    int N = H*W;
+Graph load_graph(const string& graph_file, const string& rule_file, Players& players) {
+    Graph g;
+    int N = 0;
+    ifstream gfile(graph_file);
+    ifstream rfile(rule_file);
+    string gline, rline;
 
-    TournamentResultTorus out;
-    vector<vector<double>> totalScore(H, vector<double>(W));
-    int snapEvery = max(1, rounds/snaps);
+    while (getline(gfile, gline) && getline(rfile, rline)) {
+        g.offsets.push_back(g.neighbors.size());
+        istringstream gss(gline);
+        string token;
+        while (getline(gss, token, ','))
+            g.neighbors.push_back(stoi(token));
 
-    vector<vector<int>> playedTracker(H, vector<int>(W, 0));
-    vector<vector<double>> scoreTracker(H, vector<double>(W, 0.0));
-
-    vector<vector<pair<int,int>>> matchups;
-
-    for (int round = 0; round < rounds; ++round) {
-        matchups = pickOpponents(net);
-
-        for (int y=0;y<H;++y) for (int x=0;x<W;++x) {
-            pair<int,int> match = matchups[y][x];
-            auto a1 = net.at(x,y);
-            auto a2 = net.at(match.first, match.second);
-            
-            playedTracker[y][x] += 1;
-            playedTracker[match.second][match.first] += 1;
-
-            vector<double> seeds(2*iters);
-            for (int s=0; s<2*iters; ++s) seeds[s] = uniform01();
-            for (int n=0; n<iters; ++n) {
-                Move a1prev = a1->prevMove;
-                Move a2prev = a2->prevMove;
-                Move a1move = a1->playMove(a2prev, seeds[n], n);
-                Move a2move = a2->playMove(a1prev, seeds[n+1], n);
-                scoreTracker[y][x] += payoffMatrix[a1move][a2move];
-                scoreTracker[match.second][match.first] += payoffMatrix[a2move][a1move];
-            }
-            a1->reset();
-            a2->reset();
+        istringstream rss(rline);
+        for (int k = 0; k < 4; ++k) {
+            getline(rss, token, ',');
+            players.rules.push_back(stod(token));
         }
+        ++N;
+    }
+    g.offsets.push_back(g.neighbors.size());
+    g.N = N;
 
-        for (int y=0;y<H;++y) for (int x=0;x<W;x++) {
-            if (playedTracker[y][x] > 0) scoreTracker[y][x] /= (double)playedTracker[y][x];
-            totalScore[y][x] += scoreTracker[y][x];
-        }
+    players.scores.assign(N, 0.0);
+    players.prevMoves.assign(N, DEF);
+    players.firstMoveProb.assign(N, 0.5);
 
-        for (int y=0;y<H;++y) for (int x=0;x<W;++x) {
-            array<double,4> newRule = net.at(x,y)->rule;
-            if (uniform01() > evoChance) {
-                // Mutate
-                for (int k=0;k<4;k++) {
-                    newRule[k] += ((uniform01()*2)-1)*net.at(x,y)->mutationRate;
-                    newRule[k] = clamp(newRule[k],0.0,1.0);
+    return g;
+}
+
+void take_snapshot(int round, const Players& players, ofstream& out, double& cooperation_frac) {
+    double r = round;
+    out.write(reinterpret_cast<const char*>(&r), sizeof(double));
+    out.write(reinterpret_cast<const char*>(&cooperation_frac), sizeof(double));
+    out.write(reinterpret_cast<const char*>(players.scores.data()),
+              players.scores.size() * sizeof(double));
+    out.write(reinterpret_cast<const char*>(players.rules.data()),
+              players.rules.size() * sizeof(double));
+}
+
+struct Game {
+    double evolution_chance;
+    double evolution_rate;
+    double mutation_rate;
+    int rounds;
+    int iterations;
+    // Payoff indexed as (2*p2move + p1move)
+    // [0]=P(DD), [1]=S(CD), [2]=T(DC), [3]=R(CC)
+    array<double, 4> payoff;
+
+    double get_score(Move p1, Move p2) const {
+        return payoff[(2 * p2) + p1];
+    }
+
+    void play_first_move(Players& players, int p1, int p2, splitmix64& rng, int& cooperation_count) {
+        Move p1move = players.get_first_move(p1, rng);
+        Move p2move = players.get_first_move(p2, rng);
+        cooperation_count += p1move + p2move;
+        players.set_prev_move(p1, p1move);
+        players.set_prev_move(p2, p2move);
+        players.add_score(p1, get_score(p1move, p2move));
+        players.add_score(p2, get_score(p2move, p1move));
+    }
+
+    void play_move(Players& players, int p1, int p2, splitmix64& rng, int& cooperation_count) {
+        Move p1prev = players.get_prev_move(p1);
+        Move p2prev = players.get_prev_move(p2);
+        Move p1move = players.get_move(p1, p1prev, p2prev, rng);
+        Move p2move = players.get_move(p2, p2prev, p1prev, rng);
+        cooperation_count += p1move + p2move;
+        players.set_prev_move(p1, p1move);
+        players.set_prev_move(p2, p2move);
+        players.add_score(p1, get_score(p1move, p2move));
+        players.add_score(p2, get_score(p2move, p1move));
+    }
+
+    void evolve(Players& players, Graph& g, splitmix64& rng) {
+        for (int i = 0; i < g.N; ++i) {
+            if (rand_double(rng) < evolution_chance) {
+                array<double, 4> new_rule = players.get_rule(g.best_neighbor(i, players));
+                array<double, 4> my_rule = players.get_rule(i);
+                array<double, 4> rule_shift = {0,0,0,0};
+                for (int k=0; k < 4; ++k) {
+                    rule_shift[k] = (new_rule[k] - my_rule[k]) * evolution_rate;
+                    rule_shift[k] += mutation_rate*2*(rand_double(rng)-0.5);
+                    new_rule[k] = clamp(my_rule[k] + rule_shift[k], 0.0, 1.0);
                 }
-                net.at(x,y)->setRule(newRule);
-            } else {
-                // Evolve
-                auto neighbors = net.neighbors(x,y);
-                double highScore = scoreTracker[y][x];
-                int highX = x;
-                int highY = y;
-                for (int k=0;k<neighbors.size();k++) {
-                    auto [nx, ny] = neighbors[k];
-                    if (scoreTracker[ny][nx] > highScore) {
-                        highScore = scoreTracker[ny][nx];
-                        highX = nx;
-                        highY = ny;
-                    }
-                }
-                array<double, 4> ruleShift;
-                array<double,4> targetRule = net.at(highX, highY)->rule;
-                for (int k=0;k<4;k++) {
-                    // Mutate
-                    newRule[k] += ((uniform01()*2)-1)*net.at(x,y)->mutationRate;
-                    newRule[k] += evolutionRate*(targetRule[k] - net.at(x,y)->rule[k]);
-                    newRule[k] = clamp(newRule[k],0.0,1.0);
-                }
-                net.at(x,y)->setRuleTemp(newRule);
+                players.set_rule(i, new_rule);
             }
         }
-
-        for (int y=0;y<H;++y) for (int x=0;x<W;++x) 
-            net.at(x,y)->setRule(net.at(x,y)->ruleTemp);
-
-        if (round ==  0 || ((round % snapEvery) == 0 && (round / snapEvery) > 0)) {
-            out.scoreSnaps.push_back(totalScore);
-            out.ruleSnaps.push_back(agentRuleSnapshot(net));
-            out.nonCumulativeScoreSnaps.push_back(scoreTracker);
-            cout << "progress: " << (round / snapEvery) << " / "<<snaps<<"\n";
-        }
-
-        for (auto &row : playedTracker) {
-            fill(row.begin(), row.end(), 0);
-        }
-        for (auto &row : scoreTracker) {
-            fill(row.begin(), row.end(), 0);
-        }
     }
-    out.totalScore = totalScore;
-    return out;
-}
 
-
-/* ---------------------------
-Output helpers (CSV)
---------------------------- */
-
-void write_scoreSnaps_csv(const vector<vector<vector<double>>> &scoreSnaps, const string &fname) {
-    std::cout << "Writing scoreSnaps to: " << fname << std::endl;
-    ofstream f(fname);
-    // write each snap as flattened row; comment header
-    for (size_t s=0; s<scoreSnaps.size(); ++s) {
-        auto &grid = scoreSnaps[s];
-        int H = grid.size(), W = grid[0].size();
-        // flatten
-        for (int i=0;i<H;++i) {
-            for (int j=0;j<W;++j) {
-                f << grid[i][j];
-                if (!(i==H-1 && j==W-1)) f << ",";
+    void sim_loop(Graph& g, Players& players, splitmix64& rng,
+                ofstream& out, int snapshot_interval) {
+        int cooperation_count;
+        int games;
+        double cooperation_frac;
+        vector<int> games_played;
+        for (int i=0; i<g.N; ++i) {
+            games_played.push_back(0);
+        }
+        for (int round = 0; round < rounds; ++round) {
+            cooperation_count = 0;
+            cooperation_frac = 0;
+            games = 0;
+            for (int p = 0; p < g.N; ++p) {players.set_score(p, 0); }
+            for (int p1 = 0; p1 < g.N; ++p1) {
+                games_played[p1] += 1;
+                int p2 = g.sample_neighbor(p1, rng);
+                games_played[p2] += 1;
+                play_first_move(players, p1, p2, rng, cooperation_count);
+                games += 2;
+                for (int iter = 0; iter < iterations - 1; ++iter)
+                    play_move(players, p1, p2, rng, cooperation_count);
+                    games += 2;
             }
-        }
-        f << "\n";
-    }
-    f.close();
-}
-
-void write_totalScore_csv(const vector<vector<double>> &totalScore, const string &fname) {
-    std::cout << "Writing totalScore to: " << fname << std::endl;
-    ofstream f(fname);
-    int H = totalScore.size(), W = totalScore[0].size();
-    for (int i=0;i<H;++i) {
-        for (int j=0;j<W;++j) {
-            f << totalScore[i][j];
-            if (j < W-1) f << ",";
-        }
-        f << "\n";
-    }
-    f.close();
-}
-
-
-void write_ruleSnaps_csv(const vector<vector<vector<double>>> &ruleSnaps, const string &fname) {
-    std::cout << "Writing ruleSnapss to: " << fname << std::endl;
-    ofstream f(fname);
-    // Each line: snap_index,y,x,ruleIndex,ruleValue   (sparse long form)
-    int snaps = ruleSnaps.size();
-    // For each snap
-    for (int s=0; s<snaps; ++s) {
-        //For each grid flatRules
-        auto &flatRules = ruleSnaps[s]; // y -> x*ruleLen
-        int y = (int)flatRules.size();
-        int Xflat = (int)flatRules[0].size();
-        // we don't know ruleLen directly; but it's Xflat / xLen. To keep things simple, output flattened full lines:
-        // for each row write all values as a long comma-separated line (snap per line)
-        // For row I
-        for (int i=0;i<y;++i) {
-            // for column J
-            for (int j=0;j<Xflat;++j) {
-                f << to_string(flatRules[i][j]);
-                if (j<Xflat-1) f << ",";
+            for (int i=0; i<g.N; ++i) {
+                players.scale_score(i, 1 / games_played[i]); 
+                games_played[i] = 0;
             }
-            f << "\n";
+            evolve(players, g, rng);
+            cooperation_frac = games / cooperation_count;
+            if (round % snapshot_interval == 0)
+                take_snapshot(round, players, out, cooperation_frac);
         }
+        take_snapshot(rounds, players, out, cooperation_frac); // final snapshot
     }
-    f.close();
-}
+};
 
-void write_nonCumulative_csv(const vector<vector<vector<double>>> &ncs, const string &fname) {
-    std::cout << "Writing nonCumulativeScore to: " << fname << std::endl;
-    ofstream f(fname);
-    for (size_t s=0;s<ncs.size();++s) {
-        auto &grid = ncs[s];
-        int H = grid.size(), W = grid[0].size();
-        for (int i=0;i<H;++i) {
-            for (int j=0;j<W;++j) {
-                f << grid[i][j];
-                if (!(i==H-1 && j==W-1)) f << ",";
-            }
-        }
-        f << "\n";
+int main(int argc, char* argv[]) {
+    if (argc < 6) {
+        cerr << "Usage: sim <graph_csv> <rules_csv> <output_bin> <rounds> <iters> <seed> <snaps> <evolution_chance> <evolution_rate> <mutation_rate>\n";
+        return 1;
     }
-    f.close();
-}
 
-/* ---------------------------
-main (testing)
---------------------------- */
+    string graph_file  = argv[1];
+    string rules_file  = argv[2];
+    string output_file = argv[3];
+    int rounds         = stoi(argv[4]);
+    int iters          = stoi(argv[5]);
+    int seed           = stoi(argv[6]);
+    int snaps          = stoi(argv[7]);
+    Game game;
+    game.rounds     = rounds;
+    game.iterations = iters;
+    game.evolution_chance = stod(argv[8]);
+    game.evolution_rate = stod(argv[9]);;
+    game.mutation_rate = stod(argv[10]);
 
-int main(int argc, char** argv) {
-    payoffMatrix = {
-        {atof(argv[1]), atof(argv[2])},
-        {atof(argv[3]), atof(argv[4])}
-    };
+    Players players;
+    Graph g = load_graph(graph_file, rules_file, players);
 
-    int gridN = atoi(argv[5]);
-    int rounds = atoi(argv[6]);
-    int iters = atoi(argv[7]);
-    int snaps = atoi(argv[8]);
-    double evolutionRate = atof(argv[9]);
-    double evolutionChance = atof(argv[10]);
-    unsigned int playSeed = (unsigned) std::atoi(argv[11]);
-    global_rng.seed(playSeed);
+    game.payoff = {1.0, 0.0, 5.0, 3.0};  // P, S, T, R
 
-    std::string path = argv[12];
+    splitmix64 rng(seed);
+    ofstream out(output_file, ios::binary);
 
-    cout << path;
+    int snapshot_interval = max(1, rounds / snaps);
+    game.sim_loop(g, players, rng, out, snapshot_interval);
 
-    cout << "Building grid...\n";
-    unique_ptr<Network<Memory1>> net = importGrid(gridN, path+"/maps.csv");
-
-    cout << "Running tournament (" << rounds << " rounds, " << iters << " iters per match)...\n";
-    TournamentResultTorus resu = tournament(*net, iters, rounds, snaps, evolutionRate, evolutionChance);
-
-    write_scoreSnaps_csv(resu.scoreSnaps, path+"/scoreSnaps.csv");
-    write_totalScore_csv(resu.totalScore, path+"/totalScore.csv");
-    write_ruleSnaps_csv(resu.ruleSnaps, path+"/ruleSnaps.csv");
-    write_nonCumulative_csv(resu.nonCumulativeScoreSnaps, path+"/nonCumulativeScore.csv");
-
+    cout << "Done. Wrote snapshots to " << output_file << "\n";
     return 0;
 }

@@ -23,9 +23,6 @@ RULES_FILE  = "rules.csv"
 OUTPUT_FILE = "snapshots.bin"
 
 # ── Generate network ──────────────────────────────────────────────────────────
-# Watts-Strogatz small-world: each node connected to 4 nearest neighbours,
-# 30% chance of rewiring each edge. Produces clustering like a social network
-# but with short average path lengths.
 #G = nx.watts_strogatz_graph(N, 4, 0.3, seed=SEED)
 G = nx.connected_caveman_graph(int(N/10), 10)
 G = nx.convert_node_labels_to_integers(G)
@@ -45,12 +42,10 @@ print(f"Wrote {GRAPH_FILE}  ({N} nodes, {G.number_of_edges()} edges)")
 #   rules[3] = P(coop | I cooperated, they cooperated) CC
 rng   = np.random.default_rng(SEED)
 rules = rng.random((N, 4))
-print(rules.shape)
 rules[:,0] = np.zeros(N)
 rules[:,1] = np.ones(N)
 rules[:,2] = np.zeros(N)
 rules[:,3] = np.ones(N)
-print(rules.shape)
 
 with open(RULES_FILE, "w", newline="") as f:
     writer = csv.writer(f)
